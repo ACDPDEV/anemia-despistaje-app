@@ -369,20 +369,57 @@ describe("PadronView", () => {
     expect(screen.getByText("Ana Torres")).toBeInTheDocument();
   });
 
-  it("cancels the row edit on Escape without saving", () => {
+  it("closes a clean edit on Escape silently and returns focus to Editar", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    const nombreInput = screen.getByLabelText(/^nombre/i);
+    // No changes: clean, so Esc closes silently with no discard prompt.
+    fireEvent.keyDown(nombreInput, { key: "Escape" });
+    expect(
+      screen.queryByRole("button", { name: /guardar/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /descartar cambios/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes[0].nombre).toBe("Ana Torres");
+    expect(document.activeElement).toBe(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+  });
+
+  it("arms a discard confirm on dirty Escape and discards on the second Escape", () => {
     seedTwo();
     render(<PadronView />);
     const row = rowByName("Ana Torres");
     fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
     const nombreInput = screen.getByLabelText(/^nombre/i);
     fireEvent.change(nombreInput, { target: { value: "Cambiado" } });
+    // First Esc arms the in-row confirm: the draft stays open.
     fireEvent.keyDown(nombreInput, { key: "Escape" });
-    // Edit closed, nothing saved.
+    expect(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+    );
+    // Second Esc confirms the discard: edit closed, nothing saved, focus
+    // back on the originating Editar.
+    fireEvent.keyDown(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+      { key: "Escape" },
+    );
     expect(
       screen.queryByRole("button", { name: /guardar/i }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Ana Torres")).toBeInTheDocument();
     expect(usePadronStore.getState().pacientes[0].nombre).toBe("Ana Torres");
+    expect(document.activeElement).toBe(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
   });
 
   it("saves the row edit on form submit (Enter)", () => {
@@ -649,6 +686,197 @@ describe("PadronView", () => {
     // Max 3 compact rows; the oldest net expired with an announcement.
     expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(3);
     expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
+  });
+});
+
+describe("PadronView focus management + dirty-edit guard", () => {
+  it("autofocuses Nombre when the edit row mounts", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    expect(document.activeElement).toBe(screen.getByLabelText(/^nombre/i));
+  });
+
+  it("moves focus to Deshacer after a confirmed single delete", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /deshacer/i }),
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("moves focus to Deshacer after a confirmed bulk delete", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /eliminar seleccionados/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /confirmar eliminación/i }),
+    );
+    expect(document.activeElement).toBe(
+      screen.getAllByRole("button", { name: /deshacer/i })[0],
+    );
+  });
+
+  it("returns focus to Editar after Cancelar on a clean edit", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^cancelar$/i }));
+    expect(
+      screen.queryByRole("button", { name: /guardar/i }),
+    ).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+  });
+
+  it("arms and confirms the discard through Cancelar when dirty", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Cambiado" },
+    });
+    // First tap arms: still editing, nothing discarded.
+    fireEvent.click(screen.getByRole("button", { name: /^cancelar$/i }));
+    expect(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
+    // Confirming discards the draft and returns focus to Editar.
+    fireEvent.click(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+    );
+    expect(
+      screen.queryByRole("button", { name: /guardar/i }),
+    ).not.toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes[0].nombre).toBe("Ana Torres");
+    expect(document.activeElement).toBe(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+  });
+
+  it("keeps the draft when Seguir editando disarms the prompt", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Cambiado" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^cancelar$/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /seguir editando/i }),
+    );
+    // Draft intact, prompt gone, focus back where typing happens.
+    expect(screen.getByLabelText(/^nombre/i)).toHaveValue("Cambiado");
+    expect(
+      screen.queryByRole("button", { name: /descartar cambios/i }),
+    ).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByLabelText(/^nombre/i));
+  });
+
+  it("switches rows silently when the open edit is clean", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    fireEvent.click(
+      within(rowByName("Luis Paz")).getByRole("button", { name: /editar/i }),
+    );
+    expect(screen.getByText("Editando a Luis Paz")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /descartar cambios/i }),
+    ).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByLabelText(/^nombre/i));
+  });
+
+  it("parks a row-switch behind the discard confirm when dirty", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Cambiado" },
+    });
+    // The switch does not land: Ana stays open with the discard prompt.
+    fireEvent.click(
+      within(rowByName("Luis Paz")).getByRole("button", { name: /editar/i }),
+    );
+    expect(screen.getByText("Editando a Ana Torres")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+    ).toBeInTheDocument();
+    // Confirming discards Ana's draft and completes the switch to Luis.
+    fireEvent.click(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+    );
+    expect(screen.getByText("Editando a Luis Paz")).toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes[0].nombre).toBe("Ana Torres");
+    expect(document.activeElement).toBe(screen.getByLabelText(/^nombre/i));
+  });
+
+  it("parks a filter clear behind the discard confirm when dirty", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "ana" },
+    });
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Cambiado" },
+    });
+    // Limpiar does not clear while dirty: the discard prompt arms instead.
+    fireEvent.click(screen.getByRole("button", { name: /limpiar/i }));
+    expect(screen.getByLabelText(/buscar/i)).toHaveValue("ana");
+    expect(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+    ).toBeInTheDocument();
+    // Confirming applies the parked clear and lands on the filter anchor.
+    fireEvent.click(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+    );
+    expect(screen.getByLabelText(/buscar/i)).toHaveValue("");
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByLabelText(/buscar/i));
+  });
+
+  it("clears the filter silently when the open edit is clean", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "ana" },
+    });
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /limpiar/i }));
+    // Clean: no prompt, the edit stays open, the filter clears.
+    expect(screen.getByLabelText(/buscar/i)).toHaveValue("");
+    expect(
+      screen.queryByRole("button", { name: /descartar cambios/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
   });
 });
 

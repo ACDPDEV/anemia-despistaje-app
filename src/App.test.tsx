@@ -223,4 +223,25 @@ describe("App sidebar shell", () => {
     render(<App />);
     expect(screen.getByText(/alt\+1 registro/i)).toBeInTheDocument();
   });
+
+  it("shows the shortcut hint visibly in the sidebar footer, not sr-only", () => {
+    render(<App />);
+    const hint = screen.getByText(/alt\+1 registro/i);
+    expect(hint).not.toHaveClass("sr-only");
+    // One source of truth: the old sr-only copy is gone, no duplication.
+    expect(screen.queryByText(/atajos de teclado/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/alt\+1 registro/i)).toHaveLength(1);
+  });
+
+  it("renders the severity-dot brand lockup in the sidebar header", () => {
+    const { container } = render(<App />);
+    const lockup = screen.getByTestId("brand-lockup");
+    expect(lockup).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-slot="sidebar-header"]'),
+    ).toContainElement(lockup);
+    // Four severity dots, theme tokens only, decorative.
+    const dots = lockup.querySelectorAll('span[aria-hidden="true"] > span');
+    expect(dots).toHaveLength(4);
+  });
 });

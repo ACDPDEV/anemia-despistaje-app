@@ -2,6 +2,7 @@ import { ClipboardList, LayoutDashboard, LogOut, Users, type LucideIcon } from "
 import { useSidebar } from "./ui/sidebar";
 import { isAuthConfigured, signOut } from "../lib/auth";
 import { SyncStatusChip } from "./SyncStatusChip";
+import { BrandLockup } from "./BrandLockup";
 import {
   Sidebar,
   SidebarContent,
@@ -35,9 +36,11 @@ type AppSidebarProps = {
 };
 
 // Sole navigation control. Active state derives from the single TabId source.
-// The header keeps a compact wordmark (the page h1 owns the full title).
-// The footer answers safety: sync/offline status chip plus logout when
-// auth is configured (offline-first local mode shows no logout).
+// The header keeps the compact brand lockup (the page h1 owns the full
+// title). The footer answers safety and discoverability: the sync/offline
+// status chip, one visible line naming the Alt+1/2/3 tab shortcuts (the
+// only shortcut source of truth), plus logout when auth is configured
+// (offline-first local mode shows no logout).
 export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
   const { setOpenMobile } = useSidebar();
   const authConfigured = isAuthConfigured();
@@ -50,9 +53,7 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <span className="truncate px-2 text-sm font-semibold">
-          Despistaje
-        </span>
+        <BrandLockup />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -79,6 +80,9 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
+        <p className="px-2 text-[11px] text-muted-foreground">
+          Atajos: Alt+1 Registro · Alt+2 Padrón · Alt+3 Panel
+        </p>
         <SyncStatusChip />
         {authConfigured && (
           <SidebarMenu>

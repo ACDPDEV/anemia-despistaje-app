@@ -75,6 +75,30 @@ export function PadronView({
   const bulkConfirmRef = useRef<HTMLButtonElement>(null);
   const groupsRef = useRef<UndoGroup[]>([]);
   groupsRef.current = undoGroups;
+  // Focus + dirty-guard machinery (polish P2-2/P2-3):
+  // - sectionRef scopes the post-delete focus fallback chain.
+  // - editButtonRefs remembers one Editar button per row so a cancelled
+  //   edit can return focus to its origin.
+  // - pendingCancelFocusId carries the row whose Editar regains focus
+  //   once the edit row unmounts (any close path: cancel, Esc, save).
+  // - editDirty mirrors the open edit row's dirty flag so row-switch and
+  //   filter gestures can guard instead of silently discarding.
+  // - discardSignal nudges the open edit row to arm its in-row
+  //   "Descartar cambios?" confirm; pendingPostDiscard remembers what the
+  //   discard, once confirmed, must complete (switch or filter).
+  // - Stable focus anchor, documented: the nombre filter input while the
+  //   table is mounted; the section's first button once it is not (empty
+  //   state). Focus never rests on <body> after delete or edit-close.
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const undoBoxRef = useRef<HTMLDivElement | null>(null);
+  const editButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const pendingCancelFocusId = useRef<string | null>(null);
+  const [editDirty, setEditDirty] = useState(false);
+  const [discardSignal, setDiscardSignal] = useState(0);
+  const pendingPostDiscard = useRef<
+    { type: "switch"; id: string } | { type: "filter"; value: string } | null
+  >(null);
+  const prevUndoCount = useRef(0);
 
   useEffect(() => {
     setSelected(new Set());
@@ -97,6 +121,42 @@ export function PadronView({
   useEffect(() => {
     if (bulkConfirming) bulkConfirmRef.current?.focus();
   }, [bulkConfirming]);
+
+  // Post-delete focus: a confirmed delete (single or bulk) always lands an
+  // undo group, so focus its newest Deshacer. Fallback chain when the toast
+  // is gone: the next row's Editar, else the documented stable anchor
+  // (filter input, or the section's first button in the empty state).
+  function focusFirstEditOrAnchor(): void {
+    const root = sectionRef.current;
+    if (!root) return;
+    // Prefer the next row's Editar, then the documented stable anchor
+    // (the nombre filter), then any enabled button (empty-state
+    // "Registrar paciente"). One of them always exists while the section
+    // is mounted, so focus never rests on <body>.
+    const editar = [...root.querySelectorAll("button")].find(
+      (b) => !b.disabled && b.textContent === "Editar",
+    );
+    if (editar) {
+      editar.focus();
+      return;
+    }
+    const filterInput = root.querySelector<HTMLElement>("#padron-filter");
+    if (filterInput) {
+      filterInput.focus();
+      return;
+    }
+    root.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus();
+  }
+
+  useEffect(() => {
+    if (undoGroups.length > prevUndoCount.current) {
+      const newestDeshacer =
+        undoBoxRef.current?.querySelector<HTMLButtonElement>("button");
+      if (newestDeshacer) newestDeshacer.focus();
+      else focusFirstEditOrAnchor();
+    }
+    prevUndoCount.current = undoGroups.length;
+  });
 
   function dismissGroup(key: number) {
     const timer = undoTimers.current.get(key);
@@ -132,7 +192,6 @@ export function PadronView({
   function handleDeleted(id: string, _nombre: string) {
     pushUndoGroup([id], "Paciente eliminado.");
   }
-
   function handleBulkDeleted(ids: string[]) {
     pushUndoGroup(
       ids,
@@ -149,12 +208,95 @@ export function PadronView({
     dismissGroup(key);
   }
 
+  // Any edit close (cancel, Esc, save, confirmed discard) returns focus to
+  // the originating Editar button when it is still mounted; otherwise the
+  // stable anchor. Runs as an effect on editingId so it fires after the
+  // edit row unmounts and the Editar button is back in the DOM.
+  function closeEditing(focusId: string | null): void {
+    pendingPostDiscard.current = null;
+    setEditDirty(false);
+    pendingCancelFocusId.current = focusId;
+    setEditingId(null);
+  }
+
+  useEffect(() => {
+    if (editingId !== null) return;
+    const id = pendingCancelFocusId.current;
+    pendingCancelFocusId.current = null;
+    if (id === null) return;
+    const origin = editButtonRefs.current.get(id);
+    if (origin && document.contains(origin)) {
+      origin.focus();
+      return;
+    }
+    focusFirstEditOrAnchor();
+  }, [editingId]);
+
+  // Row-switch guard: clean edits switch silently (today's behavior);
+  // dirty edits arm the open row's in-row "Descartar cambios?" confirm and
+  // park the requested row until the discard is confirmed or disarmed.
+  function handleRequestEdit(id: string): void {
+    if (editingId === null || id === editingId || !editDirty) {
+      pendingPostDiscard.current = null;
+      setEditingId(id);
+      return;
+    }
+    pendingPostDiscard.current = { type: "switch", id };
+    setDiscardSignal((s) => s + 1);
+  }
+
+  // Filter guard: explicit filter gestures (typing, Limpiar, Esc) apply
+  // directly while the edit is clean, but park behind the same in-row
+  // discard confirm while dirty — otherwise the edit row unmounts and the
+  // draft dies silently.
+  function requestFilter(value: string): void {
+    if (editingId !== null && editDirty) {
+      pendingPostDiscard.current = { type: "filter", value };
+      setDiscardSignal((s) => s + 1);
+      return;
+    }
+    setFilter(value);
+  }
+
+  // The open edit row calls back when its discard confirm resolves.
+  function handleDiscardConfirm(rowId: string): void {
+    const pending = pendingPostDiscard.current;
+    pendingPostDiscard.current = null;
+    setEditDirty(false);
+    if (!pending) {
+      closeEditing(rowId);
+      return;
+    }
+    if (pending.type === "switch") {
+      // The fresh edit row autofocuses Nombre on mount; no focus call here.
+      setEditingId(pending.id);
+      return;
+    }
+    setFilter(pending.value);
+    pendingCancelFocusId.current = null;
+    setEditingId(null);
+    // The user was filtering: land back on the filter input (stable
+    // anchor). It lives outside the edit row, so it is mounted already
+    // and takes focus synchronously.
+    sectionRef.current
+      ?.querySelector<HTMLElement>("#padron-filter")
+      ?.focus();
+  }
+
+  function handleDiscardDisarm(): void {
+    // Timeout or "Seguir editando": drop the parked switch/filter, the
+    // draft stays open exactly as it was.
+    pendingPostDiscard.current = null;
+  }
+
   // Undo toasts render in BOTH branches below: wiping the last visible row
   // lands on the empty state, and each 8s window must survive the crossing.
   // Up to 3 compact rows (newest first), each with its own Deshacer.
   const undoToast = undoGroups.length > 0 && (
     <div
       role="status"
+      data-testid="undo-toast"
+      ref={undoBoxRef}
       className="fixed bottom-4 right-4 z-50 flex max-w-sm flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"
     >
       {[...undoGroups].reverse().map((group) => (
@@ -173,7 +315,7 @@ export function PadronView({
 
   if (pacientes.length === 0) {
     return (
-      <section className="flex flex-col gap-2">
+      <section ref={sectionRef} className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
           <div className="padron-actions flex gap-2">
@@ -271,6 +413,7 @@ export function PadronView({
     const ids = selectedVisible.map((p) => p.id);
     for (const id of ids) remove(id);
     if (editingId !== null && ids.includes(editingId)) setEditingId(null);
+    setEditDirty(false);
     setSelected(new Set());
     handleBulkDeleted(ids);
   }
@@ -303,7 +446,7 @@ export function PadronView({
   }
 
   return (
-    <section className="padron-section flex flex-col gap-4">
+    <section ref={sectionRef} className="padron-section flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
         <div className="padron-actions flex gap-2">
@@ -345,12 +488,13 @@ export function PadronView({
             <Input
               id="padron-filter"
               value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              onChange={(e) => requestFilter(e.target.value)}
               onKeyDown={(e) => {
                 // Escape clears the query; ignore IME composition so the
                 // key that confirms composed text never wipes the filter.
+                // Guarded while the edit is dirty (see requestFilter).
                 if (e.key === "Escape" && !e.nativeEvent.isComposing) {
-                  setFilter("");
+                  requestFilter("");
                 }
               }}
               placeholder="Buscar por nombre…"
@@ -360,7 +504,7 @@ export function PadronView({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setFilter("")}
+                onClick={() => requestFilter("")}
               >
                 Limpiar
               </Button>
@@ -490,7 +634,11 @@ export function PadronView({
                 <PadronEditRow
                   key={p.id}
                   paciente={p}
-                  onDone={() => setEditingId(null)}
+                  discardSignal={discardSignal}
+                  onDirtyChange={setEditDirty}
+                  onDone={() => closeEditing(p.id)}
+                  onDiscardConfirm={() => handleDiscardConfirm(p.id)}
+                  onDiscardDisarm={handleDiscardDisarm}
                 />
               ) : (
                 <PadronRow
@@ -498,12 +646,15 @@ export function PadronView({
                   paciente={p}
                   selected={selected.has(p.id)}
                   onToggle={() => toggleOne(p.id)}
-                  onEdit={() => setEditingId(p.id)}
+                  onEdit={() => handleRequestEdit(p.id)}
                   onDeleted={handleDeleted}
+                  editButtonRef={(node) => {
+                    if (node) editButtonRefs.current.set(p.id, node);
+                    else editButtonRefs.current.delete(p.id);
+                  }}
                 />
               ),
-            )
-          )}
+            ))}
         </TableBody>
       </Table>
       {undoToast}
@@ -517,12 +668,14 @@ function PadronRow({
   onToggle,
   onEdit,
   onDeleted,
+  editButtonRef,
 }: {
   paciente: Paciente;
   selected: boolean;
   onToggle: () => void;
   onEdit: () => void;
   onDeleted: (id: string, nombre: string) => void;
+  editButtonRef?: (node: HTMLButtonElement | null) => void;
 }) {
   const remove = usePadronStore((s) => s.remove);
   const isPossibleDuplicate =
@@ -595,6 +748,7 @@ function PadronRow({
             variant="outline"
             size="sm"
             className="pointer-coarse:min-h-11"
+            ref={editButtonRef}
             onClick={onEdit}
           >
             Editar
@@ -647,18 +801,120 @@ function PadronRow({
 
 function PadronEditRow({
   paciente,
+  discardSignal,
+  onDirtyChange,
   onDone,
+  onDiscardConfirm,
+  onDiscardDisarm,
 }: {
   paciente: Paciente;
+  // External nudge from the row-switch / filter guards: each increment
+  // arms the in-row discard confirm (the parked switch/filter completes
+  // only when the user confirms the discard).
+  discardSignal: number;
+  onDirtyChange: (dirty: boolean) => void;
   onDone: () => void;
+  onDiscardConfirm: () => void;
+  onDiscardDisarm: () => void;
 }) {
   const update = usePadronStore((s) => s.update);
-  const [nombre, setNombre] = useState(paciente.nombre);
-  const [edad, setEdad] = useState(String(paciente.edadMeses));
-  const [hb, setHb] = useState(String(paciente.nivelHemoglobina));
+  const initialNombre = paciente.nombre;
+  const initialEdad = String(paciente.edadMeses);
+  const initialHb = String(paciente.nivelHemoglobina);
+  const [nombre, setNombre] = useState(initialNombre);
+  const [edad, setEdad] = useState(initialEdad);
+  const [hb, setHb] = useState(initialHb);
   const [nombreError, setNombreError] = useState<string | null>(null);
   const [edadError, setEdadError] = useState<string | null>(null);
   const [hbError, setHbError] = useState<string | null>(null);
+  // Dirty-edit guard (harden): any field off its initial value. Clean
+  // cancel/Esc/row-switch/filter gestures discard silently (today's
+  // behavior); dirty ones arm the in-row two-tap confirm below — no modal.
+  const dirty =
+    nombre !== initialNombre || edad !== initialEdad || hb !== initialHb;
+  // Two-tap discard grammar, mirroring the delete guards: the first tap
+  // (Cancelar, Esc, row-switch, filter gesture) arms "Descartar cambios?",
+  // the second confirms the discard. "Seguir editando" or a ~4s timeout
+  // disarms with the draft intact.
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const discardTimer = useRef<number | undefined>(undefined);
+  const discardConfirmRef = useRef<HTMLButtonElement>(null);
+
+  // High-stakes focus: the Nombre field takes focus on mount so keyboard
+  // users start typing immediately. Queried by id (the shared Input does
+  // not take a ref) — the id is row-scoped, so the query is unambiguous.
+  const nombreInputId = `nombre-${paciente.id}`;
+  useEffect(() => {
+    document.getElementById(nombreInputId)?.focus();
+  }, [nombreInputId]);
+
+  useEffect(() => {
+    onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
+
+  // Arming moves focus to "Descartar cambios?" so Enter confirms and the
+  // prompt is perceivable; Esc confirms the discard (second Esc overall).
+  useEffect(() => {
+    if (confirmingDiscard) discardConfirmRef.current?.focus();
+  }, [confirmingDiscard]);
+
+  // Row-switch / filter gestures arm the confirm from the outside. The
+  // last-seen signal ref keeps a freshly mounted row (after a confirmed
+  // switch) from inheriting the arm that confirmed it: only a signal
+  // increment while mounted arms.
+  const lastDiscardSignal = useRef(discardSignal);
+  useEffect(() => {
+    if (discardSignal !== lastDiscardSignal.current) {
+      lastDiscardSignal.current = discardSignal;
+      setConfirmingDiscard(true);
+    }
+  }, [discardSignal]);
+
+  useEffect(() => {
+    return () => window.clearTimeout(discardTimer.current);
+  }, []);
+
+  function focusNombre() {
+    document.getElementById(nombreInputId)?.focus();
+  }
+
+  function disarmDiscard() {
+    window.clearTimeout(discardTimer.current);
+    if (confirmingDiscard) {
+      setConfirmingDiscard(false);
+      onDiscardDisarm();
+    }
+  }
+
+  function armDiscard() {
+    setConfirmingDiscard(true);
+    window.clearTimeout(discardTimer.current);
+    // Timeout disarm drops the parked switch/filter and hands focus back
+    // to Nombre: the Descartar button unmounts, and focus must never fall
+    // through to <body>.
+    discardTimer.current = window.setTimeout(() => {
+      setConfirmingDiscard(false);
+      onDiscardDisarm();
+      focusNombre();
+    }, 4000);
+  }
+
+  // Single cancel entry point for Cancelar clicks and Esc: clean drafts
+  // close silently; dirty drafts arm the confirm, and a second
+  // invocation while armed confirms the discard.
+  function requestCancel() {
+    if (!dirty) {
+      onDone();
+      return;
+    }
+    if (!confirmingDiscard) {
+      armDiscard();
+      return;
+    }
+    window.clearTimeout(discardTimer.current);
+    setConfirmingDiscard(false);
+    onDiscardConfirm();
+  }
 
   // Per-field validation mirrors RegisterForm: same clinical copy, each
   // Input pointing at its own error id, invalid flag only on offenders.
@@ -703,13 +959,15 @@ function PadronEditRow({
   }
 
   // Esc cancels the edit without saving; ignored during IME composition
-  // so confirming composed text never closes the row. Enter saves through
-  // the native form submit (single-line inputs): no custom Enter handler,
-  // so Shift+Enter behaves exactly like Enter with no quirk to guard.
+  // so confirming composed text never closes the row. While dirty the
+  // first Esc arms the discard confirm and only the second discards.
+  // Enter saves through the native form submit (single-line inputs): no
+  // custom Enter handler, so Shift+Enter behaves exactly like Enter with
+  // no quirk to guard.
   function handleRowKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape" && !event.nativeEvent.isComposing) {
       event.stopPropagation();
-      onDone();
+      requestCancel();
     }
   }
 
@@ -727,7 +985,7 @@ function PadronEditRow({
           <Field data-invalid={nombreError ? true : undefined}>
             <FieldLabel htmlFor={`nombre-${paciente.id}`}>Nombre</FieldLabel>
             <Input
-              id={`nombre-${paciente.id}`}
+              id={nombreInputId}
               value={nombre}
               maxLength={MAX_NOMBRE}
               onChange={(e) => {
@@ -783,7 +1041,16 @@ function PadronEditRow({
             </FieldDescription>
             {hbError && <FieldError id={hbErrorId}>{hbError}</FieldError>}
           </Field>
-          <div className="flex gap-2">
+          <div
+            className="flex gap-2"
+            onBlur={(e) => {
+              // Leaving the action group disarms a pending discard prompt
+              // (same grammar as the delete guards); the draft is untouched.
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                disarmDiscard();
+              }
+            }}
+          >
             <Button
               type="submit"
               size="sm"
@@ -791,15 +1058,58 @@ function PadronEditRow({
             >
               Guardar
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="pointer-coarse:min-h-11"
-              onClick={onDone}
-            >
-              Cancelar
-            </Button>
+            {confirmingDiscard ? (
+              <>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="pointer-coarse:min-h-11"
+                  ref={discardConfirmRef}
+                  onClick={requestCancel}
+                  onKeyDown={(e) => {
+                    // Second-Esc confirmation must not bubble to the form
+                    // row handler, which would invoke the cancel entry a
+                    // second time after the discard already resolved.
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      requestCancel();
+                    }
+                  }}
+                >
+                  Descartar cambios?
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="pointer-coarse:min-h-11"
+                  onClick={() => {
+                    disarmDiscard();
+                    focusNombre();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      disarmDiscard();
+                      focusNombre();
+                    }
+                  }}
+                >
+                  Seguir editando
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="pointer-coarse:min-h-11"
+                onClick={requestCancel}
+              >
+                Cancelar
+              </Button>
+            )}
           </div>
         </form>
       </TableCell>

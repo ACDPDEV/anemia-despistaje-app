@@ -5,6 +5,7 @@ import { PadronView } from "./components/PadronView";
 import { DashboardView } from "./components/DashboardView";
 import { LoginView } from "./components/LoginView";
 import { AppSidebar, type TabId } from "./components/app-sidebar";
+import { BrandLockup } from "./components/BrandLockup";
 import {
   SidebarInset,
   SidebarProvider,
@@ -78,8 +79,9 @@ export default function App() {
 
   if (authConfigured && !session) {
     return (
-      <main className="mx-auto w-full max-w-md p-6">
-        <h1 className="mb-4 text-2xl font-semibold">Despistaje de Anemia</h1>
+      <main className="mx-auto flex w-full max-w-md flex-col gap-4 p-6">
+        <BrandLockup />
+        <h1 className="text-2xl font-semibold">Despistaje de Anemia</h1>
         <LoginView />
       </main>
     );
@@ -94,10 +96,6 @@ export default function App() {
           <h1 className="text-2xl font-semibold">Despistaje de Anemia</h1>
         </header>
         <div className="mx-auto w-full max-w-5xl p-6">
-          {/* Discoverability hint for the Alt+1/2/3 tab shortcuts (one place). */}
-          <p className="sr-only">
-            Atajos de teclado: Alt+1 Registro, Alt+2 Padrón, Alt+3 Panel.
-          </p>
           {tab === "register" && <RegisterForm />}
           {tab === "padron" && (
             <PadronView onEmptyRegister={() => setTab("register")} />

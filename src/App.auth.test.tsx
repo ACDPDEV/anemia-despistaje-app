@@ -92,4 +92,16 @@ describe("App auth gating", () => {
       screen.queryByRole("button", { name: /cerrar sesión/i }),
     ).not.toBeInTheDocument();
   });
+
+  it("shows the brand lockup on the login card", async () => {
+    mockedAuth.isAuthConfigured.mockReturnValue(true);
+    mockedAuth.getSession.mockResolvedValue(null);
+    render(<App />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /iniciar sesión/i }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("brand-lockup")).toBeInTheDocument();
+  });
 });

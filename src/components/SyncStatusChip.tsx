@@ -28,6 +28,18 @@ export function SyncStatusChip() {
   // Last-sync receipt: mirrors lastPullAt live so the second line updates
   // right after a sync completes. Null until the first successful pull.
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(lastPullAt);
+  // Receipt freshness: a gentle 30s interval re-renders the receipt while
+  // mounted (cleanup on unmount). Interval over window-focus on purpose:
+  // the chip sits in the sidebar through long field sessions where the
+  // window never blurs, and the receipt escalates at minute/hour
+  // boundaries — a 30s cadence keeps those boundaries honest without
+  // per-second render churn. (Within the first minute the seconds count
+  // can lag up to 30s; accepted tradeoff, documented here.)
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((t) => t + 1), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
   // Last sync failure, kept visible until the next attempt starts.
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
@@ -137,9 +149,10 @@ export function SyncStatusChip() {
   // sync runs, and to retry after a failure.
   const showAction = online && (pending > 0 || error !== null || syncing);
   const buttonLabel = syncing ? SYNCING_LABEL : error !== null ? "Reintentar" : "Sincronizar";
-  // Honest receipt line: seconds formatter is the only machinery syncGuard
-  // owns, so compose with it directly (no invented min/h escalation).
-  // Never-synced shows no lie — a quiet "Sin sincronizar aún".
+  // Honest receipt line: the formatter owns the s/min/h escalation, so
+  // compose with it directly. Never-synced shows no lie — a quiet
+  // "Sin sincronizar aún". Date.now() reads fresh on every render, and the
+  // 30s interval above keeps it moving while mounted.
   const receipt =
     lastSyncAt === null
       ? "Sin sincronizar aún"

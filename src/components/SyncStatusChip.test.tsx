@@ -335,4 +335,34 @@ describe("SyncStatusChip", () => {
       /última sincronización hace \d+s/i,
     );
   });
+
+  it("escalates the receipt to minutes for older syncs", () => {
+    guard.recordPull(Date.now() - 125_000);
+    render(<SyncStatusChip />);
+    expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+      "Última sincronización hace 2 min",
+    );
+  });
+
+  it("refreshes the receipt on the gentle 30s interval while mounted", () => {
+    vi.useFakeTimers();
+    try {
+      guard.recordPull(Date.now() - 50_000);
+      const { unmount } = render(<SyncStatusChip />);
+      expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+        /última sincronización hace 50s/i,
+      );
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+        "Última sincronización hace 1 min",
+      );
+      // Cleanup on unmount: no interval left ticking.
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

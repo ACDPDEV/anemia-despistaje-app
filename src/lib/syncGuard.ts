@@ -28,10 +28,17 @@ export const SYNC_BUSY_MESSAGE = "Sincronizando… Espera a que termine la sincr
 // Prefix for the "last sync Xs ago" label; use formatLastSyncAgo for the full text.
 export const LAST_SYNC_PREFIX = "Última sincronización hace";
 
-// Full "Última sincronización hace Xs" label for a given elapsed second count.
+// Full "Última sincronización hace …" label for a given elapsed second
+// count. Escalates honestly with floored units and no invented precision:
+// under a minute shows seconds, under an hour shows whole minutes, beyond
+// that whole hours (field sessions run long; a seconds count past 59 lies
+// about freshness the chip cannot afford to re-render every second for).
 export function formatLastSyncAgo(seconds: number): string {
-  const clamped = Math.max(0, Math.floor(seconds));
-  return `${LAST_SYNC_PREFIX} ${clamped}s`;
+  const total = Math.max(0, Math.floor(seconds));
+  if (total < 60) return `${LAST_SYNC_PREFIX} ${total}s`;
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) return `${LAST_SYNC_PREFIX} ${minutes} min`;
+  return `${LAST_SYNC_PREFIX} ${Math.floor(minutes / 60)} h`;
 }
 
 // Default minimum gap between two remote pulls.

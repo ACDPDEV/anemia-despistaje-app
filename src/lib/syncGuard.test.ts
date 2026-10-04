@@ -86,6 +86,21 @@ describe("pull cooldown", () => {
     expect(formatLastSyncAgo(7)).toBe("Última sincronización hace 7s");
   });
 
+  it("escalates the receipt honestly across seconds, minutes, and hours", () => {
+    expect(formatLastSyncAgo(0)).toBe("Última sincronización hace 0s");
+    expect(formatLastSyncAgo(59)).toBe("Última sincronización hace 59s");
+    expect(formatLastSyncAgo(60)).toBe("Última sincronización hace 1 min");
+    expect(formatLastSyncAgo(3599)).toBe("Última sincronización hace 59 min");
+    expect(formatLastSyncAgo(3600)).toBe("Última sincronización hace 1 h");
+    expect(formatLastSyncAgo(7261)).toBe("Última sincronización hace 2 h");
+  });
+
+  it("clamps negatives and floors fractions without invented precision", () => {
+    expect(formatLastSyncAgo(-5)).toBe("Última sincronización hace 0s");
+    expect(formatLastSyncAgo(7.9)).toBe("Última sincronización hace 7s");
+    expect(formatLastSyncAgo(119.9)).toBe("Última sincronización hace 1 min");
+  });
+
   it("skips fetchAll within the window and runs after it", async () => {
     const fetchAll = vi.fn(async () => [makeRemote()]);
     const table = { fetchAll, upsert: vi.fn(async () => {}) };
