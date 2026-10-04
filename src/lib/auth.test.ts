@@ -12,6 +12,7 @@ import {
   onAuthStateChange,
   signInWithPassword,
   signOut,
+  signUp,
 } from "./auth";
 import { resetSupabaseClientForTests } from "./supabase";
 
@@ -21,6 +22,10 @@ function makeFakeAuth(overrides: Record<string, unknown> = {}) {
   return {
     signInWithPassword: vi.fn(async () => ({
       data: { session: { access_token: "tok" } },
+      error: null,
+    })),
+    signUp: vi.fn(async () => ({
+      data: { session: { access_token: "tok" }, user: { id: "u1" } },
       error: null,
     })),
     signOut: vi.fn(async () => ({ error: null })),
@@ -54,6 +59,9 @@ describe("auth module", () => {
 
     await expect(getSession()).resolves.toBeNull();
     await expect(signInWithPassword("a@b.c", "secret")).rejects.toThrow(
+      /no está configurada/,
+    );
+    await expect(signUp("a@b.c", "secret")).rejects.toThrow(
       /no está configurada/,
     );
     await expect(signOut()).resolves.toBeUndefined();
@@ -132,5 +140,46 @@ describe("auth module", () => {
     captured?.("SIGNED_IN", { access_token: "tok" });
     captured?.("SIGNED_OUT", null);
     expect(seen).toEqual([{ access_token: "tok" }, null]);
+  });
+
+  it("signs up with an active session when email confirmation is off", async () => {
+    const fake = makeFakeAuth();
+    const result = await signUp("a@b.c", "secret", { auth: fake } as never);
+    expect(result).toEqual({
+      ok: true,
+      session: { access_token: "tok" },
+      needsConfirmation: false,
+    });
+    expect(fake.signUp).toHaveBeenCalledWith({
+      email: "a@b.c",
+      password: "secret",
+    });
+  });
+
+  it("flags needsConfirmation when the session is null but the user exists", async () => {
+    const fake = makeFakeAuth({
+      signUp: vi.fn(async () => ({
+        data: { session: null, user: { id: "u1" } },
+        error: null,
+      })),
+    });
+    const result = await signUp("a@b.c", "secret", { auth: fake } as never);
+    expect(result).toEqual({
+      ok: true,
+      session: null,
+      needsConfirmation: true,
+    });
+  });
+
+  it("surfaces sign-up errors through the injected fake client", async () => {
+    const failing = makeFakeAuth({
+      signUp: vi.fn(async () => ({
+        data: {},
+        error: { message: "User already registered" },
+      })),
+    });
+    await expect(
+      signUp("a@b.c", "secret", { auth: failing } as never),
+    ).rejects.toThrow("User already registered");
   });
 });

@@ -5,16 +5,22 @@ import { Input } from "@/components/ui/input";
 import {
   isAuthConfigured,
   signInWithPassword,
+  signUp,
 } from "../lib/auth";
 
-// Login form with Spanish labels. When Supabase credentials are missing the
-// app stays fully offline-first: an offline/local-only notice renders instead
-// of the form, and the shell (App.tsx) bypasses this view entirely.
+// Login + sign-up form with Spanish labels. When Supabase credentials are
+// missing the app stays fully offline-first: an offline/local-only notice
+// renders instead of the form, and the shell (App.tsx) bypasses this view
+// entirely. Sign-up with email confirmation enabled replaces the form with
+// a success notice; without confirmation the session arrives via the
+// existing onAuthStateChange machinery in App.tsx.
 export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   if (!isAuthConfigured()) {
     return (
@@ -35,19 +41,56 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
     setPending(true);
     setError(null);
     try {
-      await signInWithPassword(email.trim(), password);
-      onSignedIn?.();
+      if (mode === "signup") {
+        const result = await signUp(email.trim(), password);
+        if (result.needsConfirmation) {
+          setConfirmationSent(true);
+        } else {
+          onSignedIn?.();
+        }
+      } else {
+        await signInWithPassword(email.trim(), password);
+        onSignedIn?.();
+      }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "No se pudo iniciar sesión.",
+        err instanceof Error
+          ? err.message
+          : mode === "signup"
+            ? "No se pudo crear la cuenta."
+            : "No se pudo iniciar sesión.",
       );
     } finally {
       setPending(false);
     }
   }
 
+  function switchMode(next: "signin" | "signup") {
+    setMode(next);
+    setError(null);
+    setConfirmationSent(false);
+  }
+
   const invalid = error !== null;
   const busy = pending;
+  const isSignup = mode === "signup";
+
+  if (confirmationSent) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-muted-foreground">
+          Cuenta creada. Revisa tu correo para confirmar tu cuenta.
+        </p>
+        <Button
+          type="button"
+          variant="link"
+          onClick={() => switchMode("signin")}
+        >
+          Volver a iniciar sesión
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit}>
@@ -68,7 +111,7 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
           <Input
             id="login-password"
             type="password"
-            autoComplete="current-password"
+            autoComplete={isSignup ? "new-password" : "current-password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             aria-invalid={invalid ? true : undefined}
@@ -80,7 +123,23 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
           </p>
         )}
         <Button type="submit" disabled={busy}>
-          {pending ? "Iniciando sesión…" : "Iniciar sesión"}
+          {isSignup
+            ? pending
+              ? "Creando cuenta…"
+              : "Crear cuenta"
+            : pending
+              ? "Iniciando sesión…"
+              : "Iniciar sesión"}
+        </Button>
+        <Button
+          type="button"
+          variant="link"
+          disabled={busy}
+          onClick={() => switchMode(isSignup ? "signin" : "signup")}
+        >
+          {isSignup
+            ? "¿Ya tienes cuenta? Iniciar sesión"
+            : "¿No tienes cuenta? Crear cuenta"}
         </Button>
       </FieldGroup>
     </form>

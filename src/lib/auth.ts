@@ -10,6 +10,10 @@ export type AuthClient = {
     email: string;
     password: string;
   }) => Promise<{ data: unknown; error: { message: string } | null }>;
+  signUp: (creds: {
+    email: string;
+    password: string;
+  }) => Promise<{ data: unknown; error: { message: string } | null }>;
   signOut: () => Promise<{ error: { message: string } | null }>;
   getSession: () => Promise<{
     data: { session: Session | null };
@@ -57,6 +61,35 @@ export async function signInWithPassword(
   if (error) throw new Error(error.message);
   const session = (data as { session?: Session | null }).session ?? null;
   return session;
+}
+
+// Email+password registration over supabase.auth.signUp.
+// Returns needsConfirmation=true when Supabase runs in email-confirmation
+// mode (session null but user present); otherwise the session is active and
+// the existing onAuthStateChange machinery in App.tsx gates forward.
+export type SignUpResult = {
+  ok: true;
+  session: Session | null;
+  needsConfirmation: boolean;
+};
+
+export async function signUp(
+  email: string,
+  password: string,
+  explicit?: SupabaseLike | null,
+): Promise<SignUpResult> {
+  const client = resolveClient(explicit);
+  if (!client) throw new Error("La autenticación no está configurada en este equipo.");
+  const { data, error } = await client.auth.signUp({ email, password });
+  if (error) throw new Error(error.message);
+  const session =
+    (data as { session?: Session | null }).session ?? null;
+  const user = (data as { user?: unknown }).user ?? null;
+  return {
+    ok: true,
+    session,
+    needsConfirmation: session === null && user !== null,
+  };
 }
 
 export async function signOut(

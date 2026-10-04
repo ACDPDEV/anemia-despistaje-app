@@ -56,4 +56,140 @@ describe("LoginView", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/obligatorios/);
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it("toggles between sign-in and sign-up modes with the correct labels", () => {
+    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
+    render(<LoginView />);
+
+    expect(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: /^crear cuenta$/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /¿ya tienes cuenta\? iniciar sesión/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the confirmation notice after sign-up needing confirmation", async () => {
+    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
+    const spy = vi
+      .spyOn(auth, "signUp")
+      .mockResolvedValue({ ok: true, session: null, needsConfirmation: true });
+    const onSignedIn = vi.fn();
+    render(<LoginView onSignedIn={onSignedIn} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "nuevo@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^crear cuenta$/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/revisa tu correo para confirmar/i),
+      ).toBeInTheDocument(),
+    );
+    expect(spy).toHaveBeenCalledWith("nuevo@b.c", "secreta");
+    expect(onSignedIn).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText(/correo/i)).not.toBeInTheDocument();
+  });
+
+  it("returns to sign-in from the confirmation notice", async () => {
+    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
+    vi.spyOn(auth, "signUp").mockResolvedValue({
+      ok: true,
+      session: null,
+      needsConfirmation: true,
+    });
+    render(<LoginView />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "nuevo@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^crear cuenta$/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/revisa tu correo para confirmar/i),
+      ).toBeInTheDocument(),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /volver a iniciar sesión/i }),
+    );
+
+    expect(screen.getByLabelText(/correo/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("calls onSignedIn after sign-up without confirmation", async () => {
+    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
+    vi.spyOn(auth, "signUp").mockResolvedValue({
+      ok: true,
+      session: { access_token: "tok" },
+      needsConfirmation: false,
+    } as never);
+    const onSignedIn = vi.fn();
+    render(<LoginView onSignedIn={onSignedIn} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^crear cuenta$/i }));
+
+    await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows a role=alert error when sign-up fails", async () => {
+    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
+    vi.spyOn(auth, "signUp").mockRejectedValue(
+      new Error("User already registered"),
+    );
+    render(<LoginView />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^crear cuenta$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "User already registered",
+      ),
+    );
+  });
 });
