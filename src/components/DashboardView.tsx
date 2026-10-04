@@ -382,6 +382,25 @@ export function DashboardView({
           </CardContent>
         </Card>
       </details>
+
+      {/* View-scoped help (onboard): the Panel confusions — triage sentence,
+          risk hues, collapsed details, tombstone totals — not the capture
+          steps. Quiet details/summary mirroring Registro/Padrón, placed
+          last so the first screen stays sentence + hero + numbers. */}
+      <details
+        data-testid="dashboard-help"
+        className="text-xs text-muted-foreground"
+      >
+        <summary className="cursor-pointer underline-offset-4 hover:underline pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
+          ¿Cómo funciona?
+        </summary>
+        <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+          <li>La frase de triage resume quién necesita seguimiento.</li>
+          <li>Los colores de las barras muestran el peor diagnóstico observado en el rango de edad.</li>
+          <li>Los detalles de hemoglobina y riesgo están colapsados por defecto.</li>
+          <li>Los totales excluyen registros eliminados.</li>
+        </ol>
+      </details>
     </section>
   );
 }

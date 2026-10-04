@@ -489,6 +489,31 @@ describe("DashboardView", () => {
       expect(label.getAttribute("fill")).toBe("var(--foreground)");
     }
   });
+
+  it("teaches the panel behind a quiet ¿Cómo funciona? disclosure", () => {
+    seedPadron();
+    render(<DashboardView />);
+    const help = screen.getByTestId("dashboard-help");
+    expect(help.tagName).toBe("DETAILS");
+    expect(help).toHaveTextContent(/¿cómo funciona\?/i);
+    // View-scoped copy: triage sentence, risk hues, collapsed details,
+    // tombstone totals.
+    for (const line of [
+      /frase de triage/i,
+      /peor diagnóstico observado/i,
+      /colapsados por defecto/i,
+      /excluyen registros eliminados/i,
+    ]) {
+      expect(help).toHaveTextContent(line);
+    }
+    // Quiet styling mirroring Registro/Padrón.
+    expect(help.className).toMatch(/text-muted-foreground/);
+    // Quiet placement: last in the section, never ahead of hero + KPIs.
+    const hero = screen.getByTestId("hero-modsev");
+    expect(
+      hero.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 });
 
 describe("captionFor", () => {

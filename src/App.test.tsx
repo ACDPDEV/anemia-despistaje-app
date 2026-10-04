@@ -485,6 +485,8 @@ describe("App sidebar shell", () => {
 
     // Offline-first shell: no Supabase credentials here, so the sync path
     // runs and reports the unconfigured cause — proving Alt+G fired it.
+    // Error state is per-hook-instance: only the fired surface (the
+    // sidebar chip, first in DOM order) announces.
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /no está configurada/i,
     );

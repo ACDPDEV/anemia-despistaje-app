@@ -2155,6 +2155,39 @@ describe("PadronView phone sync affordance (run-22 P2-2)", () => {
     }
   });
 
+  it("wraps the header actions beneath the title at 360px", () => {
+    seedTwo();
+    render(<PadronView />);
+    // jsdom can't do layout: pin the wrap contract on the header row.
+    const header = screen
+      .getByText("Padrón de pacientes")
+      .closest("div")!;
+    expect(header.className).toMatch(/flex-wrap/);
+    expect(header.className).toMatch(/justify-between/);
+  });
+
+  it("announces the shared failure copy as an alert line under the phone row", async () => {
+    resetSyncGuardForTests();
+    setOnline(true);
+    seedTwo();
+    render(<PadronView />);
+    try {
+      fireEvent.click(
+        within(screen.getByTestId("padron-sync-phone")).getByRole("button", {
+          name: /^sincronizar$/i,
+        }),
+      );
+      // Same error string source as the chip's alert, never a copy.
+      const row = screen.getByTestId("padron-sync-phone");
+      const alert = await within(row).findByRole("alert");
+      expect(alert).toHaveTextContent(/no está configurada/i);
+      // Quiet styling consistent with the chip alert.
+      expect(alert.className).toMatch(/text-destructive/);
+    } finally {
+      setOnline(true);
+    }
+  });
+
   it("keeps Alt+G working with both surfaces mounted (shell query resolves)", async () => {
     resetSyncGuardForTests();
     setOnline(true);
@@ -2181,7 +2214,9 @@ describe("PadronView phone sync affordance (run-22 P2-2)", () => {
       expect(shellTarget).not.toBeNull();
       expect(shellTarget).not.toBeDisabled();
       fireEvent.click(shellTarget!);
-      // The shared handler ran: the chip surfaces the unconfigured cause.
+      // The shared handler ran: the surface that fired surfaces the
+      // unconfigured cause. Error state is per-hook-instance, so only the
+      // clicked surface announces (exactly one alert, never a double).
       expect(await screen.findByRole("alert")).toHaveTextContent(
         /no está configurada/i,
       );
@@ -2211,9 +2246,39 @@ describe("PadronView contextual help (run-22 P3-3)", () => {
     expect(help.className).toMatch(/text-muted-foreground/);
   });
 
-  it("stays out of the empty state (nothing to select, sync, or export yet)", () => {
+  it("mounts the same help disclosure in the empty state", () => {
     render(<PadronView />);
     expect(screen.getByText(/no hay pacientes registrados/i)).toBeInTheDocument();
-    expect(screen.queryByTestId("padron-help")).not.toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    const help = screen.getByTestId("padron-help");
+    expect(help).toHaveTextContent(/¿cómo funciona\?/i);
+    // Same view-scoped copy as the populated branch, never a second text.
+    for (const step of [
+      /solo alcanzan lo visible/i,
+      /deshacer recupera/i,
+      /alt\+g/i,
+      /exporta o imprime/i,
+    ]) {
+      expect(help).toHaveTextContent(step);
+    }
+  });
+
+  it("shows the shared pending line in the empty state while dirty tombstones await push", () => {
+    seedTwo();
+    const ids = usePadronStore.getState().pacientes.map((p) => p.id);
+    for (const id of ids) usePadronStore.getState().remove(id);
+    render(<PadronView />);
+    // Wiped view, but the deletes are dirty: the empty state must not read clean.
+    expect(screen.getByText(/no hay pacientes registrados/i)).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByTestId("padron-pending")).toHaveTextContent(
+      "2 por sincronizar",
+    );
+  });
+
+  it("shows no pending line in the empty state when nothing awaits push", () => {
+    render(<PadronView />);
+    expect(screen.getByText(/no hay pacientes registrados/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("padron-pending")).not.toBeInTheDocument();
   });
 });

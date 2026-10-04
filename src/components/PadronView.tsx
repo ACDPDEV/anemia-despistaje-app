@@ -94,6 +94,28 @@ export interface EditPreimage extends NewPaciente {
 // Row edit/delete reuse the existing store update/remove selectors.
 // Tombstones (deletedAt set) are hidden: remove() is a dirty soft-delete
 // kept for sync push, never a visible row (B2).
+// Shared Padrón help disclosure (clarify): one component so the populated
+// branch and the empty branch below can never drift apart. View-scoped
+// (bulk scope, confirm + Deshacer, sync, export/print — not the capture
+// steps), quiet details/summary mirroring RegisterForm's.
+function PadronHelpDetails() {
+  return (
+    <details
+      data-testid="padron-help"
+      className="text-xs text-muted-foreground"
+    >
+      <summary className="cursor-pointer underline-offset-4 hover:underline pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
+        ¿Cómo funciona?
+      </summary>
+      <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+        <li>Selecciona en la vista: las acciones solo alcanzan lo visible.</li>
+        <li>Eliminar pide confirmación y Deshacer recupera lo borrado.</li>
+        <li>Sincroniza con Alt+G cuando tengas conexión.</li>
+        <li>Exporta o imprime desde los botones de arriba.</li>
+      </ol>
+    </details>
+  );
+}
 export function PadronView({
   onEmptyRegister,
 }: {
@@ -507,6 +529,19 @@ export function PadronView({
             agregar el primer paciente.
           </p>
         )}
+        {/* Empty state still teaches: the same help disclosure (nothing to
+            select yet, but sync/export grammar applies to the next capture)
+            plus the shared pending vocabulary when dirty tombstones await
+            push — a wiped view with unsynced deletes must not read clean. */}
+        <PadronHelpDetails />
+        {pendingSyncCount > 0 && (
+          <p
+            data-testid="padron-pending"
+            className="text-xs text-muted-foreground"
+          >
+            {formatSyncPending(pendingSyncCount)}
+          </p>
+        )}
         {undoToast}
       </section>
     );
@@ -635,7 +670,10 @@ export function PadronView({
 
   return (
     <section ref={sectionRef} className="padron-section flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
+      {/* 360px header (layout): flex-wrap so Exportar/Imprimir drop beneath
+          the title instead of crowding it. justify-between keeps the spread
+          on wide rows; wrapped, the action group sits under the title. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
         <div className="padron-actions flex gap-2">
           <Button
@@ -660,9 +698,19 @@ export function PadronView({
           screen — compact status text plus the shared sync action, quiet
           when clean + online like the chip. sm:hidden keeps it off desktop
           (the footer chip owns that surface); print:hidden keeps it off
-          paper. No second live region: on failure the button flips to
-          Reintentar with the cause in the title, mirroring the collapsed
-          chip grammar. */}
+          paper. Failure speaks through a compact role="alert" line rendering
+          the SAME error string as the chip's alert (one hook, one
+          vocabulary — never a copied string), styled identically
+          (text-xs text-destructive).
+          Double-announce audit (honest answer): no suppression needed.
+          Each useSyncAction instance owns its own error state, so only the
+          surface that ran the failed sync announces — normally exactly one
+          live region. With the sidebar Sheet closed (the normal phone
+          state) the Sheet content unmounts and this row is the sole
+          announcer; with the Sheet open the Sheet is a modal overlay
+          holding focus while this row sits inert behind it. Both alerts
+          can co-exist only if both surfaces ran and failed independently,
+          and then they read the identical string — benign, not competing. */}
       {(sync.pending > 0 ||
         sync.error !== null ||
         sync.syncing ||
@@ -670,17 +718,24 @@ export function PadronView({
         <div
           data-testid="padron-sync-phone"
           title={sync.title}
-          className="flex items-center gap-2 sm:hidden print:hidden"
+          className="flex flex-col gap-1 sm:hidden print:hidden"
         >
-          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {sync.text}
-          </p>
-          {sync.showAction && (
-            <SyncActionButton
-              label={sync.buttonLabel}
-              syncing={sync.syncing}
-              onSync={sync.handleSync}
-            />
+          <div className="flex items-center gap-2">
+            <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {sync.text}
+            </p>
+            {sync.showAction && (
+              <SyncActionButton
+                label={sync.buttonLabel}
+                syncing={sync.syncing}
+                onSync={sync.handleSync}
+              />
+            )}
+          </div>
+          {sync.error !== null && (
+            <p role="alert" className="text-xs text-destructive">
+              {sync.error}
+            </p>
           )}
         </div>
       )}
@@ -725,21 +780,9 @@ export function PadronView({
       {/* View-scoped help (onboard): the Padrón confusions — bulk scope,
           confirm + Deshacer, sync, export/print — not the capture steps.
           Quiet details/summary mirroring RegisterForm's, always mounted
-          (unlike the bulk bar) so it teaches before the first selection. */}
-      <details
-        data-testid="padron-help"
-        className="text-xs text-muted-foreground"
-      >
-        <summary className="cursor-pointer underline-offset-4 hover:underline pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
-          ¿Cómo funciona?
-        </summary>
-        <ol className="mt-1 list-decimal space-y-0.5 pl-4">
-          <li>Selecciona en la vista: las acciones solo alcanzan lo visible.</li>
-          <li>Eliminar pide confirmación y Deshacer recupera lo borrado.</li>
-          <li>Sincroniza con Alt+G cuando tengas conexión.</li>
-          <li>Exporta o imprime desde los botones de arriba.</li>
-        </ol>
-      </details>
+          (unlike the bulk bar) so it teaches before the first selection.
+          Shared with the empty branch through PadronHelpDetails. */}
+      <PadronHelpDetails />
       <div className="padron-filters flex flex-col gap-4">
         <Field>
           <FieldLabel htmlFor="padron-filter">Buscar por nombre</FieldLabel>
@@ -1031,6 +1074,10 @@ function PadronRow({
         <span className="font-medium sm:hidden print:hidden">
           Hemoglobina (g/dL):{" "}
         </span>
+        {/* Hb dual-voice rule (deliberate): rows and CSV data lines render
+            the RAW entry for fidelity; aggregates (dashboard average, print
+            stats, CSV stats) speak formatHb one-decimal. Revisit if the
+            hemoglobinometer's resolution ever changes. */}
         {paciente.nivelHemoglobina}
       </TableCell>
       <TableCell className="padron-cell-dx">

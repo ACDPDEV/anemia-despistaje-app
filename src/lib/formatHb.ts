@@ -3,6 +3,11 @@
 // disagree. One decimal (toFixed(1)): the print/CSV wording was judged the
 // trustworthy voice, and 0.1 g/dL matches the hemoglobinometer's own
 // resolution, so the dashboard now speaks paper's language, not the reverse.
+//
+// Hb dual-voice rule (deliberate, documented here and at the per-row render
+// site in PadronView): ROWS and CSV data lines keep the raw entry for
+// fidelity; only AGGREGATES speak this formatter. Revisit if the meter's
+// resolution ever changes.
 export function formatHb(value: number): string {
   return value.toFixed(1);
 }
