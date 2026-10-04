@@ -200,15 +200,15 @@ export function PadronView({
           </div>
         </Field>
         <label
-          htmlFor="graves-primero"
+          htmlFor="moderados-severos-primero"
           className="flex cursor-pointer items-center gap-2 text-sm font-medium pointer-coarse:min-h-11"
         >
           <Checkbox
-            id="graves-primero"
+            id="moderados-severos-primero"
             checked={gravesPrimero}
             onChange={(e) => setGravesPrimero(e.target.checked)}
           />
-          Ver graves primero
+          Ver moderados y severos primero
         </label>
       </div>
       <Table className="padron-table">
@@ -327,7 +327,13 @@ function PadronRow({
             if (!e.currentTarget.contains(e.relatedTarget as Node)) disarm();
           }}
         >
-          <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="pointer-coarse:min-h-11"
+            onClick={onEdit}
+          >
             Editar
           </Button>
           {confirming ? (
@@ -336,6 +342,7 @@ function PadronRow({
                 type="button"
                 variant="destructive"
                 size="sm"
+                className="pointer-coarse:min-h-11"
                 aria-label={`Confirmar eliminación de ${paciente.nombre}`}
                 onClick={handleDeleteTap}
                 onKeyDown={(e) => {
@@ -348,6 +355,7 @@ function PadronRow({
                 type="button"
                 variant="outline"
                 size="sm"
+                className="pointer-coarse:min-h-11"
                 onClick={disarm}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") disarm();
@@ -361,6 +369,7 @@ function PadronRow({
               type="button"
               variant="destructive"
               size="sm"
+              className="pointer-coarse:min-h-11"
               onClick={handleDeleteTap}
             >
               Eliminar
@@ -506,13 +515,18 @@ function PadronEditRow({
             {hbError && <FieldError id={hbErrorId}>{hbError}</FieldError>}
           </Field>
           <div className="flex gap-2">
-            <Button type="submit" size="sm">
+            <Button
+              type="submit"
+              size="sm"
+              className="pointer-coarse:min-h-11"
+            >
               Guardar
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className="pointer-coarse:min-h-11"
               onClick={onDone}
             >
               Cancelar

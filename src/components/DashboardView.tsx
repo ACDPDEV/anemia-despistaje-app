@@ -244,7 +244,7 @@ export function DashboardView() {
         className="flex flex-col gap-6"
       >
         <summary className="cursor-pointer text-sm font-medium text-primary">
-          Ver gráficos
+          {chartsOpen ? "Ocultar gráficos" : "Ver gráficos"}
         </summary>
         <div className="flex flex-col gap-6">
           <Card>

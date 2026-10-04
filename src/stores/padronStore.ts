@@ -7,7 +7,7 @@ import { normalizeNombre } from "../lib/normalize";
 // The 101st registration is rejected with a Spanish message.
 export const MAX_PADRON = 100;
 
-// Severity queue rank: lower runs first when "graves primero" is active.
+// Severity queue rank: lower runs first when "moderados y severos primero" is active.
 export const SEVERITY_RANK: Record<Diagnosis, number> = {
   "Anemia Severa": 0,
   "Anemia Moderada": 1,
@@ -59,6 +59,14 @@ interface PadronState {
   // visible again. Marked dirty so the next push replicates the revival
   // (deleted_at null wins by newer updatedAt). Local-only otherwise.
   restore: (id: string) => void;
+  // Marks pushed rows clean after a successful pushDirty (pushedIds come
+  // straight from the push outcome). Tombstone GC stays separate in
+  // purgeSyncedTombstones: call it after this so replicated deletes drop.
+  markSynced: (ids: string[]) => void;
+  // Replaces the padron with a guardedPull merge result (mergePacientes
+  // output). No validation: the merge already preserves local order and
+  // recomputes diagnostico from hemoglobin.
+  applyPullMerge: (merged: Paciente[]) => void;
   // GC for pushed deletes: drops ONLY tombstones already replicated
   // (deletedAt set AND dirty=false). Dirty tombstones are still queued
   // for the next push and must survive.
@@ -159,6 +167,18 @@ export const usePadronStore = create<PadronState>()(
             return { ...p, deletedAt: null, updatedAt: now, dirty: true };
           }),
         })),
+
+      markSynced: (ids) =>
+        set((state) => {
+          const pushed = new Set(ids);
+          return {
+            pacientes: state.pacientes.map((p) =>
+              pushed.has(p.id) ? { ...p, dirty: false } : p,
+            ),
+          };
+        }),
+
+      applyPullMerge: (merged) => set({ pacientes: merged }),
 
       countByDiagnosis: () => {
         const counts = emptyCounts();

@@ -192,30 +192,59 @@ describe("PadronView", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders graves-first as a design-system checkbox with label association", () => {
+  it("renders the severity-first toggle as a design-system checkbox with label association", () => {
     seedTwo();
     render(<PadronView />);
-    const toggle = screen.getByRole("checkbox", { name: /graves primero/i });
+    const toggle = screen.getByRole("checkbox", { name: /moderados y severos primero/i });
     // Native input restyled with theme tokens, not a raw checkbox.
     expect(toggle).toHaveAttribute("data-slot", "checkbox");
     expect(toggle.tagName).toBe("INPUT");
     // Label association survives the swap.
-    expect(screen.getByLabelText(/graves primero/i)).toBe(toggle);
+    expect(screen.getByLabelText(/moderados y severos primero/i)).toBe(toggle);
     // 44px touch hit area comes from the label row on coarse pointers.
     expect(toggle.closest("label")?.className).toMatch(/pointer-coarse:min-h-11/);
   });
 
-  it("lists patients in registration order while graves-first is off", () => {
+  it("gives every row action button a coarse-pointer minimum height", () => {
+    seedTwo();
+    render(<PadronView />);
+    const anaRow = rowByName("Ana Torres");
+    for (const name of [/editar/i, /^eliminar$/i]) {
+      expect(
+        within(anaRow).getByRole("button", { name }).className,
+      ).toMatch(/pointer-coarse:min-h-11/);
+    }
+    // Armed confirm pair.
+    fireEvent.click(within(anaRow).getByRole("button", { name: /^eliminar$/i }));
+    for (const name of [/confirmar/i, /cancelar/i]) {
+      expect(
+        within(anaRow).getByRole("button", { name }).className,
+      ).toMatch(/pointer-coarse:min-h-11/);
+    }
+    // Edit-row pair lives in its own form: disarm the confirm first so the
+    // Cancelar query is unambiguous.
+    fireEvent.click(within(anaRow).getByRole("button", { name: /cancelar/i }));
+    const luisRow = rowByName("Luis Paz");
+    fireEvent.click(within(luisRow).getByRole("button", { name: /editar/i }));
+    const form = screen.getByRole("button", { name: /guardar/i }).closest("form")!;
+    for (const name of [/guardar/i, /cancelar/i]) {
+      expect(within(form).getByRole("button", { name }).className).toMatch(
+        /pointer-coarse:min-h-11/,
+      );
+    }
+  });
+
+  it("lists patients in registration order while severity-first is off", () => {
     seedTriage();
     render(<PadronView />);
-    expect(screen.getByRole("checkbox", { name: /graves primero/i })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /moderados y severos primero/i })).not.toBeChecked();
     expect(visibleNames()).toEqual(["Nora Normal", "Severo Soto", "Leve Lara"]);
   });
 
-  it("sorts Severa first when graves-first is on and restores order when off", () => {
+  it("sorts Severa first when severity-first is on and restores order when off", () => {
     seedTriage();
     render(<PadronView />);
-    const toggle = screen.getByRole("checkbox", { name: /graves primero/i });
+    const toggle = screen.getByRole("checkbox", { name: /moderados y severos primero/i });
     fireEvent.click(toggle);
     expect(visibleNames()).toEqual(["Severo Soto", "Leve Lara", "Nora Normal"]);
     fireEvent.click(toggle);

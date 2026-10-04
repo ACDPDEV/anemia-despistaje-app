@@ -166,6 +166,26 @@ describe("DashboardView", () => {
     ).toBe(true);
   });
 
+  it("names the charts toggle honestly for its open state", () => {
+    seedPadron();
+    render(<DashboardView />);
+
+    const disclosure = screen.getByTestId(
+      "charts-disclosure",
+    ) as HTMLDetailsElement;
+    expect(within(disclosure).getByText("Ver gráficos").tagName).toBe(
+      "SUMMARY",
+    );
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+    expect(within(disclosure).getByText("Ocultar gráficos").tagName).toBe(
+      "SUMMARY",
+    );
+    expect(
+      within(disclosure).queryByText("Ver gráficos"),
+    ).not.toBeInTheDocument();
+  });
+
   it("teaches the shared Hb cutoffs on the Hb chart card", () => {
     seedPadron();
     render(<DashboardView />);
