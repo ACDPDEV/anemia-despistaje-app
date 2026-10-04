@@ -51,4 +51,4 @@ El padrón local (Zustand + localStorage) es la fuente de verdad; Supabase es un
 ## Accessibility & Inclusion
 
 - Modo oscuro/claro obligatorio (tokens de tema, no colores hardcodeados).
-- Labels asociados a inputs, errores con `role=alert` y `aria-describedby` cableado en Nombre/Edad/Hb (create form y edit row); el hint de Nombre es siempre visible, los errores se añaden al describedby al fallar.
+- Labels asociados a inputs, errores con `role=alert` y `aria-describedby` cableado en Nombre/Edad/Hb (create form y edit row); los tres hints siempre están en el describedby, los errores se añaden al fallar.
