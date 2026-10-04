@@ -133,7 +133,26 @@ describe("PadronView", () => {
     seedTriage();
     render(<PadronView />);
     expect(screen.getByRole("status")).toHaveTextContent(
-      /moderada \+ severa: 1/i,
+      /moderada \+ severa \(en vista\): 1 de 3/i,
+    );
+  });
+
+  it("derives the status line from the visible rows when a filter is active", () => {
+    seedTriage();
+    render(<PadronView />);
+    // Nora Normal is the only visible row and needs no follow-up.
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "nora" },
+    });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /moderada \+ severa \(en vista\): 0 de 1/i,
+    );
+    // Severo Soto alone is a 1-of-1 triage view, not the global 1-of-3.
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "severo" },
+    });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /moderada \+ severa \(en vista\): 1 de 1/i,
     );
   });
 

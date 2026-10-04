@@ -1,5 +1,4 @@
 import "@testing-library/jest-dom/vitest";
-
 // Node >= 22 ships a global `localStorage` stub that is unavailable unless
 // Node runs with `--localstorage-file`. Vitest keeps pre-existing Node
 // globals instead of jsdom's working implementation, so bridge jsdom's
@@ -51,4 +50,44 @@ for (const name of ["localStorage", "sessionStorage"] as const) {
   } catch {
     testGlobal[name] = replacement;
   }
+}
+
+// jsdom has no ResizeObserver, and recharts ResponsiveContainer depends on
+// it. Report a fixed desktop-ish content box so responsive charts render
+// deterministically in tests; real browsers observe the real box.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class MockResizeObserver implements ResizeObserver {
+    private callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+    observe(target: Element): void {
+      const rect = {
+        x: 0,
+        y: 0,
+        width: 480,
+        height: 220,
+        top: 0,
+        left: 0,
+        bottom: 220,
+        right: 480,
+        toJSON: () => ({}),
+      };
+      this.callback(
+        [
+          {
+            target,
+            contentRect: rect,
+            borderBoxSize: [],
+            contentBoxSize: [],
+            devicePixelContentBoxSize: [],
+          } as unknown as ResizeObserverEntry,
+        ],
+        this,
+      );
+    }
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  globalThis.ResizeObserver = MockResizeObserver;
 }

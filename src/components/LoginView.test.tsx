@@ -47,14 +47,79 @@ describe("LoginView", () => {
     );
   });
 
-  it("requires email and password before calling sign-in", async () => {
+  it("flags each empty field on its own before calling sign-in", async () => {
     vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
     const spy = vi.spyOn(auth, "signInWithPassword").mockResolvedValue(null);
     render(<LoginView />);
 
     fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/obligatorios/);
+
+    const email = screen.getByLabelText(/correo/i);
+    const password = screen.getByLabelText(/contraseña/i);
+    expect(email).toHaveAttribute("aria-invalid", "true");
+    expect(email).toHaveAttribute("aria-describedby", "login-email-error");
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(password).toHaveAttribute(
+      "aria-describedby",
+      "login-password-error",
+    );
+    expect(screen.getByText(/el correo electrónico es obligatorio/i)).toHaveAttribute(
+      "id",
+      "login-email-error",
+    );
+    expect(screen.getByText(/la contraseña es obligatoria/i)).toHaveAttribute(
+      "id",
+      "login-password-error",
+    );
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("flags only the empty password when the email is filled", async () => {
+    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
+    const spy = vi.spyOn(auth, "signInWithPassword").mockResolvedValue(null);
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    expect(screen.getByLabelText(/correo/i)).not.toHaveAttribute(
+      "aria-invalid",
+    );
+    expect(screen.getByLabelText(/contraseña/i)).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("leaves fields valid when sign-in itself fails", async () => {
+    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
+    vi.spyOn(auth, "signInWithPassword").mockRejectedValue(
+      new Error("Invalid login credentials"),
+    );
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), {
+      target: { value: "wrong" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Invalid login credentials",
+      ),
+    );
+    expect(screen.getByLabelText(/correo/i)).not.toHaveAttribute(
+      "aria-invalid",
+    );
+    expect(screen.getByLabelText(/contraseña/i)).not.toHaveAttribute(
+      "aria-invalid",
+    );
   });
 
   it("toggles between sign-in and sign-up modes with the correct labels", () => {

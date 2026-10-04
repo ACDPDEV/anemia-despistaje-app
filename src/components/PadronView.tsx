@@ -32,7 +32,6 @@ export function PadronView({
   onEmptyRegister?: () => void;
 }) {
   const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
-  const countByDiagnosis = usePadronStore((s) => s.countByDiagnosis);
   const [filter, setFilter] = useState("");
   const [gravesPrimero, setGravesPrimero] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -76,11 +75,9 @@ export function PadronView({
       : pacientes.filter((p) => normalizeNombre(p.nombre).includes(normalized));
   const visible = gravesPrimero ? bySeverity(filtered) : filtered;
 
-  const counts = countByDiagnosis();
-  const moderateSevere =
-    counts["Anemia Moderada"] + counts["Anemia Severa"];
-
-  // Stats over the visible set feed both the print header and the CSV.
+  // Stats over the visible set feed the status line, the print header,
+  // and the CSV. The on-screen line must never quote global counts while
+  // a filter is active, so it derives from `visible` too.
   const visibleModerateSevere = visible.filter(
     (p) => p.diagnostico === "Anemia Moderada" || p.diagnostico === "Anemia Severa",
   ).length;
@@ -137,7 +134,8 @@ export function PadronView({
         </p>
       </div>
       <p role="status" className="text-sm text-muted-foreground">
-        Moderada + Severa: {moderateSevere}
+        Moderada + Severa (en vista): {visibleModerateSevere} de{" "}
+        {visible.length}
       </p>
       <div className="padron-filters flex flex-col gap-4">
         <div>

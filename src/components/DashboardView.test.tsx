@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
-import { captionFor, DashboardView, toHbBandData } from "./DashboardView";
+import { captionFor, DashboardView, toHbBandData, triageSentence } from "./DashboardView";
 
 const HB_BANDS = ["Normal", "Anemia Leve", "Anemia Moderada", "Anemia Severa"];
 
@@ -38,7 +38,7 @@ describe("DashboardView", () => {
     expect(screen.getByTestId("kpi-modsev")).toHaveTextContent("2");
   });
 
-  it("renders a fixed-size 4-band Hb chart with selector counts", () => {
+  it("renders a responsive 4-band Hb chart with selector counts", () => {
     seedPadron();
     const { container } = render(<DashboardView />);
     const chart = screen.getByTestId("hb-chart");
@@ -51,12 +51,26 @@ describe("DashboardView", () => {
     expect(within(chart).getByText("2")).toBeInTheDocument();
     expect(within(chart).getAllByText("1")).toHaveLength(3);
 
-    // Fixed-size hook: real SVG with explicit dimensions, no ResponsiveContainer
+    // Responsive hook: charts stretch to the card instead of fixed 320px.
     const svg = chart.querySelector("svg");
     expect(svg).not.toBeNull();
-    expect(svg?.getAttribute("width")).toBe("320");
-    expect(svg?.getAttribute("height")).toBe("200");
-    expect(container.querySelector(".recharts-responsive-container")).toBeNull();
+    expect(svg?.getAttribute("width")).not.toBe("320");
+    expect(
+      container.querySelector(".recharts-responsive-container"),
+    ).not.toBeNull();
+  });
+
+  it("colors Hb bars by severity with Severa on the destructive token", () => {
+    seedPadron();
+    render(<DashboardView />);
+    const chart = screen.getByTestId("hb-chart");
+    const bars = chart.querySelectorAll(".recharts-bar-rectangle path");
+    expect(bars).toHaveLength(4);
+    const fills = [...bars].map((b) => b.getAttribute("fill"));
+    expect(fills[0]).toBe("var(--color-severity-normal)");
+    expect(fills[1]).toBe("var(--color-severity-mild)");
+    expect(fills[2]).toBe("var(--color-severity-moderate)");
+    expect(fills[3]).toBe("var(--destructive)");
   });
 
   it("renders per-group age bars with the 24-month boundary in 24-59", () => {
@@ -69,6 +83,56 @@ describe("DashboardView", () => {
     // ages 10, 15, 20 → younger; 24 (boundary), 40 → older
     expect(within(chart).getByText("3")).toBeInTheDocument();
     expect(within(chart).getByText("2")).toBeInTheDocument();
+  });
+
+  it("leads with a triage sentence ahead of the KPI cards", () => {
+    seedPadron();
+    render(<DashboardView />);
+    const triage = screen.getByTestId("triage-sentence");
+    // 2 moderate-or-severe of 5 registered.
+    expect(triage).toHaveTextContent(
+      "2 moderados o severos de 5 registrados necesitan seguimiento",
+    );
+    // Protagonist type sits one step above the KPI values.
+    expect(triage.tagName).toBe("P");
+    expect(triage.className).toMatch(/text-2xl/);
+    // The sentence renders before every KPI card in DOM order.
+    const firstKpi = screen.getByTestId("kpi-total");
+    expect(
+      triage.compareDocumentPosition(firstKpi) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("shows the calm zero variant of the triage sentence when empty", () => {
+    render(<DashboardView />);
+    expect(screen.getByTestId("triage-sentence")).toHaveTextContent(
+      "Ningún caso moderado o severo de 0 registrados",
+    );
+  });
+
+  it("exposes each chart's counts in a visually-hidden data table", () => {
+    seedPadron();
+    render(<DashboardView />);
+
+    const hbTable = screen.getByTestId("hb-data-table");
+    expect(hbTable).toHaveClass("sr-only");
+    for (const [band, count] of [
+      ["Normal", "2"],
+      ["Anemia Leve", "1"],
+      ["Anemia Moderada", "1"],
+      ["Anemia Severa", "1"],
+    ] as const) {
+      const row = within(hbTable).getByText(band).closest("tr")!;
+      expect(within(row).getByText(count)).toBeInTheDocument();
+    }
+
+    const ageTable = screen.getByTestId("age-data-table");
+    expect(ageTable).toHaveClass("sr-only");
+    const younger = within(ageTable).getByText("6-23").closest("tr")!;
+    expect(within(younger).getByText("3")).toBeInTheDocument();
+    const older = within(ageTable).getByText("24-59").closest("tr")!;
+    expect(within(older).getByText("2")).toBeInTheDocument();
   });
 
   it("shows every KPI card with value plus exactly one Spanish caption", () => {
@@ -152,6 +216,29 @@ describe("captionFor", () => {
     expect(captionFor("avg", true)).toBe("Sin registros");
     expect(captionFor("anemia", true)).toBe("Sin datos de anemia");
     expect(captionFor("modsev", true)).toBe("Sin casos moderados ni severos");
+  });
+});
+
+describe("triageSentence", () => {
+  it("names the follow-up count over the registered total", () => {
+    expect(triageSentence(5, 2)).toBe(
+      "2 moderados o severos de 5 registrados necesitan seguimiento",
+    );
+  });
+
+  it("uses the singular when a single case needs follow-up", () => {
+    expect(triageSentence(4, 1)).toBe(
+      "1 moderado o severo de 4 registrados necesita seguimiento",
+    );
+  });
+
+  it("stays calm and names the denominator when there is nothing to follow", () => {
+    expect(triageSentence(5, 0)).toBe(
+      "Ningún caso moderado o severo de 5 registrados",
+    );
+    expect(triageSentence(0, 0)).toBe(
+      "Ningún caso moderado o severo de 0 registrados",
+    );
   });
 });
 

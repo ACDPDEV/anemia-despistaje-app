@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   isAuthConfigured,
@@ -18,7 +18,12 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  // Empty fields flag only their own Input; auth failures (wrong
+  // credentials, existing account) stay a form-level alert so no field
+  // is marked invalid for a server-side outcome.
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
 
@@ -34,12 +39,17 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (pending) return;
-    if (email.trim().length === 0 || password.length === 0) {
-      setError("El correo y la contraseña son obligatorios.");
-      return;
-    }
+    // Per-field required check: the shared sentence is split so each
+    // empty Input carries its own id, message, and invalid flag.
+    const nextEmailError =
+      email.trim().length === 0 ? "El correo electrónico es obligatorio." : null;
+    const nextPasswordError =
+      password.length === 0 ? "La contraseña es obligatoria." : null;
+    setEmailError(nextEmailError);
+    setPasswordError(nextPasswordError);
+    if (nextEmailError || nextPasswordError) return;
     setPending(true);
-    setError(null);
+    setFormError(null);
     try {
       if (mode === "signup") {
         const result = await signUp(email.trim(), password);
@@ -53,7 +63,7 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
         onSignedIn?.();
       }
     } catch (err) {
-      setError(
+      setFormError(
         err instanceof Error
           ? err.message
           : mode === "signup"
@@ -67,11 +77,12 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
 
   function switchMode(next: "signin" | "signup") {
     setMode(next);
-    setError(null);
+    setEmailError(null);
+    setPasswordError(null);
+    setFormError(null);
     setConfirmationSent(false);
   }
 
-  const invalid = error !== null;
   const busy = pending;
   const isSignup = mode === "signup";
 
@@ -95,31 +106,45 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   return (
     <form onSubmit={handleSubmit}>
       <FieldGroup>
-        <Field data-invalid={invalid ? true : undefined}>
+        <Field data-invalid={emailError ? true : undefined}>
           <FieldLabel htmlFor="login-email">Correo electrónico</FieldLabel>
           <Input
             id="login-email"
             type="email"
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            aria-invalid={invalid ? true : undefined}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (emailError) setEmailError(null);
+            }}
+            aria-invalid={emailError ? true : undefined}
+            aria-describedby={emailError ? "login-email-error" : undefined}
           />
+          {emailError && (
+            <FieldError id="login-email-error">{emailError}</FieldError>
+          )}
         </Field>
-        <Field data-invalid={invalid ? true : undefined}>
+        <Field data-invalid={passwordError ? true : undefined}>
           <FieldLabel htmlFor="login-password">Contraseña</FieldLabel>
           <Input
             id="login-password"
             type="password"
             autoComplete={isSignup ? "new-password" : "current-password"}
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={invalid ? true : undefined}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (passwordError) setPasswordError(null);
+            }}
+            aria-invalid={passwordError ? true : undefined}
+            aria-describedby={passwordError ? "login-password-error" : undefined}
           />
+          {passwordError && (
+            <FieldError id="login-password-error">{passwordError}</FieldError>
+          )}
         </Field>
-        {error && (
+        {formError && (
           <p role="alert" className="text-sm text-destructive">
-            {error}
+            {formError}
           </p>
         )}
         <Button type="submit" disabled={busy}>

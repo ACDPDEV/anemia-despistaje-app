@@ -49,6 +49,54 @@ describe("RegisterForm", () => {
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
 
+  it("flags only the offending field with a wired aria-describedby", () => {
+    render(<RegisterForm />);
+    fillAndSubmit("", "24", "12.0");
+
+    const nombre = screen.getByLabelText(/nombre/i);
+    const edad = screen.getByLabelText(/edad/i);
+    const hb = screen.getByLabelText(/hemoglobina/i);
+
+    // Only nombre is invalid and points at its own error id.
+    expect(nombre).toHaveAttribute("aria-invalid", "true");
+    expect(nombre).toHaveAttribute("aria-describedby", "nombre-error");
+    expect(screen.getByRole("alert")).toHaveAttribute("id", "nombre-error");
+    expect(edad).not.toHaveAttribute("aria-invalid");
+    expect(edad).not.toHaveAttribute("aria-describedby");
+    expect(hb).not.toHaveAttribute("aria-invalid");
+    expect(hb).not.toHaveAttribute("aria-describedby");
+
+    // Fixing nombre and breaking edad moves the flag, never doubling it.
+    fillAndSubmit("Luis Paz", "5", "12.0");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByLabelText(/edad/i)).toHaveAttribute(
+      "aria-describedby",
+      "edad-error",
+    );
+    expect(screen.getByLabelText(/nombre/i)).not.toHaveAttribute(
+      "aria-invalid",
+    );
+  });
+
+  it("keeps every field valid when the store cap rejects the submit", () => {
+    const { add } = usePadronStore.getState();
+    for (let i = 0; i < 100; i += 1) {
+      add({ nombre: `Paciente ${i}`, edadMeses: 24, nivelHemoglobina: 12.0 });
+    }
+    render(<RegisterForm />);
+    fillAndSubmit("Uno Más", "24", "12.0");
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/lleno/i);
+    expect(screen.getByLabelText(/nombre/i)).not.toHaveAttribute(
+      "aria-invalid",
+    );
+    expect(screen.getByLabelText(/edad/i)).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByLabelText(/hemoglobina/i)).not.toHaveAttribute(
+      "aria-invalid",
+    );
+    expect(usePadronStore.getState().pacientes).toHaveLength(100);
+  });
+
   it("warns about a possible duplicate yet still registers", () => {
     usePadronStore
       .getState()
