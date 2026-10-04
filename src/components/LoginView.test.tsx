@@ -29,7 +29,7 @@ describe("LoginView", () => {
       target: { value: "a@b.c" },
     });
     fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
-      target: { value: "wrong" },
+      target: { value: "clave-mala" },
     });
     fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
 
@@ -98,7 +98,7 @@ describe("LoginView", () => {
       target: { value: "a@b.c" },
     });
     fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
-      target: { value: "wrong" },
+      target: { value: "clave-mala" },
     });
     fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
 
@@ -291,7 +291,7 @@ describe("LoginView", () => {
       target: { value: "a@b.c" },
     });
     fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
-      target: { value: "wrong" },
+      target: { value: "clave-mala" },
     });
     fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
 
@@ -491,5 +491,195 @@ describe("LoginView offline notice (run-30 P3)", () => {
         configurable: true,
       });
     }
+  });
+});
+
+describe("LoginView already-registered recovery (run-31 P2-a)", () => {
+  async function failSignupAsRegistered() {
+    vi.spyOn(auth, "signUp").mockRejectedValue(
+      new Error("User already registered"),
+    );
+    render(<LoginView />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^crear cuenta$/i }));
+
+    await screen.findByRole("alert");
+  }
+
+  it("offers one-click recovery beside the already-registered alert", async () => {
+    await failSignupAsRegistered();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Ese correo ya está registrado. Inicia sesión o usa otro correo.",
+    );
+    expect(
+      screen.getByRole("button", { name: /ir a iniciar sesión/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("switches to sign-in with the email preserved", async () => {
+    await failSignupAsRegistered();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /ir a iniciar sesión/i }),
+    );
+
+    // Sign-in mode back, email kept for the retry, password dropped.
+    expect(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/correo/i)).toHaveValue("a@b.c");
+    expect(
+      screen.getByLabelText(/contraseña/i, { selector: "input" }),
+    ).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows no recovery action for other server failures", async () => {
+    vi.spyOn(auth, "signUp").mockRejectedValue(new Error("boom"));
+    render(<LoginView />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^crear cuenta$/i }));
+
+    await screen.findByRole("alert");
+    expect(
+      screen.queryByRole("button", { name: /ir a iniciar sesión/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("LoginView password length pre-check (run-31 P2-b)", () => {
+  it("flags a short password on its field before any network call", () => {
+    const signInSpy = vi
+      .spyOn(auth, "signInWithPassword")
+      .mockResolvedValue(null);
+    const signUpSpy = vi
+      .spyOn(auth, "signUp")
+      .mockResolvedValue({ ok: true, session: null, needsConfirmation: true });
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "corta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    const password = screen.getByLabelText(/contraseña/i, {
+      selector: "input",
+    });
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(password).toHaveAttribute(
+      "aria-describedby",
+      "login-password-error",
+    );
+    const fieldError = screen.getByText(/mínimo 6 caracteres/i);
+    expect(fieldError).toHaveAttribute("id", "login-password-error");
+    expect(signInSpy).not.toHaveBeenCalled();
+    expect(signUpSpy).not.toHaveBeenCalled();
+  });
+
+  it("lets a 6-character password reach the auth client", async () => {
+    const spy = vi.spyOn(auth, "signInWithPassword").mockResolvedValue(null);
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "seis12" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith("a@b.c", "seis12"),
+    );
+  });
+
+  it("keeps server failures form-level even with a long-enough password", async () => {
+    vi.spyOn(auth, "signInWithPassword").mockRejectedValue(
+      new Error("Invalid login credentials"),
+    );
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "clave-mala" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    await screen.findByRole("alert");
+    // Server outcome: no field owns it.
+    expect(screen.getByLabelText(/correo/i)).not.toHaveAttribute(
+      "aria-invalid",
+    );
+    expect(
+      screen.getByLabelText(/contraseña/i, { selector: "input" }),
+    ).not.toHaveAttribute("aria-invalid");
+  });
+});
+
+describe("LoginView mode-switch hygiene (run-31 minor)", () => {
+  it("clears the password but keeps the email when switching modes", () => {
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿no tienes cuenta\? crear cuenta/i }),
+    );
+
+    expect(screen.getByLabelText(/correo/i)).toHaveValue("a@b.c");
+    expect(
+      screen.getByLabelText(/contraseña/i, { selector: "input" }),
+    ).toHaveValue("");
+  });
+
+  it("disables the show/hide toggle while the submit is pending", async () => {
+    let release!: () => void;
+    const gate = new Promise<null>((resolve) => {
+      release = () => resolve(null);
+    });
+    vi.spyOn(auth, "signInWithPassword").mockReturnValue(gate);
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    const toggle = await screen.findByRole("button", {
+      name: /mostrar contraseña/i,
+    });
+    expect(toggle).toBeDisabled();
+    release();
   });
 });

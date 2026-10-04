@@ -829,7 +829,7 @@ describe("sync outcome note (run-30 P1-b)", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("joins a real push confirmation with the cooldown line behind a push", async () => {
+  it("voices only the push confirmation when a push lands behind a cooldown skip", async () => {
     const id = seedDirty();
     pushMock.mockResolvedValueOnce({
       ok: true,
@@ -846,10 +846,11 @@ describe("sync outcome note (run-30 P1-b)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
 
-    // Both computed strings, one honest line, no new copy.
-    await screen.findByText(
-      `Se sincronizó 1 registro con Supabase. ${guard.PULL_COOLDOWN_MESSAGE}`,
-    );
+    // The push confirmation already proves freshness, so the cooldown
+    // clause stays silent behind it (push-only, no joined sentence).
+    await screen.findByText("Se sincronizó 1 registro con Supabase.");
+    expect(statusText()).toBe("Se sincronizó 1 registro con Supabase.");
+    expect(statusText()).not.toContain(guard.PULL_COOLDOWN_MESSAGE);
     expect(usePadronStore.getState().pacientes[0].dirty).toBe(false);
   });
 
@@ -885,6 +886,47 @@ describe("sync outcome note (run-30 P1-b)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("lets new dirty rows beat the stale success notice (pending always wins)", async () => {
+    const id = seedDirty();
+    pushMock.mockResolvedValue({
+      ok: true,
+      pushedIds: [id],
+      message: "Se sincronizó 1 registro con Supabase.",
+    });
+    render(<SyncStatusChip />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+    await screen.findByText("Se sincronizó 1 registro con Supabase.");
+    expect(statusText()).toBe("Se sincronizó 1 registro con Supabase.");
+
+    // A new registration lands after the sync: the queue truth returns,
+    // the congratulation never covers it.
+    act(() => {
+      usePadronStore.getState().add({
+        nombre: "Luis Paz",
+        edadMeses: 30,
+        nivelHemoglobina: 6.5,
+      });
+    });
+    expect(statusText()).toBe("1 por sincronizar");
+  });
+
+  it("keeps the success notice while clean (no pending to win)", async () => {
+    const id = seedDirty();
+    pushMock.mockResolvedValue({
+      ok: true,
+      pushedIds: [id],
+      message: "Se sincronizó 1 registro con Supabase.",
+    });
+    render(<SyncStatusChip />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+    await screen.findByText("Se sincronizó 1 registro con Supabase.");
+    // No new rows: the notice still stands, the queue is empty.
+    expect(statusText()).toBe("Se sincronizó 1 registro con Supabase.");
+    expect(usePadronStore.getState().pacientes[0].dirty).toBe(false);
   });
 });
 

@@ -118,6 +118,20 @@ export function useSyncAction(): SyncAction {
   // Dirty rows (tombstones included) are the pending queue.
   const pending = pacientes.filter((p) => p.dirty).length;
 
+  // Stale-notice guard (run-31 P1): when the queue goes from empty to
+  // non-empty, the last outcome note stops describing the world — drop it
+  // so the pending line wins (sync → register must read "1 por
+  // sincronizar", never the old congratulation). Only the 0→>0 edge
+  // clears: rows that stay dirty through a sync keep that sync's own
+  // note, and failures already clear via fail(). clearSyncNotice notifies
+  // only when a note stands, so no render loop (this effect reruns on
+  // pending alone, never on the notice it clears).
+  const prevPending = useRef(pending);
+  useEffect(() => {
+    if (prevPending.current === 0 && pending > 0) clearSyncNotice();
+    prevPending.current = pending;
+  }, [pending]);
+
   const text = !online
     ? `${SYNC_STATUS_OFFLINE} · ${formatSyncPending(pending)}`
     : pending > 0
@@ -207,14 +221,13 @@ export function useSyncAction(): SyncAction {
       // and the push/pull success lines were computed then discarded.
       // Success voices that already-computed module vocabulary, one honest
       // line through the existing announcer: the push confirmation when
-      // local edits replicated, else the pull message. Behind a push, the
-      // cooldown line joins the push confirmation (both computed strings,
-      // no new copy). The ticking receipt stays non-live, so the note
-      // announces exactly once per sync action.
+      // local edits replicated, else the pull message. Behind a push the
+      // cooldown clause stays silent — the push confirmation already proves
+      // freshness, so joining the cooldown line only buries the outcome.
+      // The ticking receipt stays non-live, so the note announces exactly
+      // once per sync action.
       if (pull.skipped === "cooldown") {
-        recordSyncNotice(
-          pushedIds.length > 0 ? `${pushMessage} ${pull.message}` : pull.message,
-        );
+        recordSyncNotice(pushedIds.length > 0 ? pushMessage : pull.message);
         return;
       }
       applyPullMerge(pull.merged);
@@ -242,8 +255,11 @@ export function useSyncAction(): SyncAction {
       ? SYNC_NEVER_SYNCED_RECEIPT
       : formatLastSyncAgo(Math.max(0, Math.floor((Date.now() - lastSyncAt) / 1000)));
   // The chip's single announcer: the last outcome note (success/cooldown)
-  // when one stands, else the pending/safe status. Static between sync
-  // actions, so receipt ticks never re-announce it.
+  // when one stands, else the pending/safe status. A stale note never
+  // covers NEW dirty rows (run-31 P1): the transition effect below clears
+  // the notice when the queue goes 0→>0, so after sync → register the
+  // pending line wins. Static between sync actions, so receipt ticks
+  // never re-announce it.
   const displayText = notice ?? text;
   // Mirrors the full status so the collapsed (icon-only) sidebar clipping
   // stays discoverable through the native tooltip.

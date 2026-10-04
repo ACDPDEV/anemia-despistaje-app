@@ -9,6 +9,7 @@ import {
   signUp,
 } from "../lib/auth";
 import {
+  ALREADY_REGISTERED_MESSAGE,
   OFFLINE_RETRY_MESSAGE,
   toSpanishErrorMessage,
 } from "../lib/errorMessages";
@@ -27,6 +28,7 @@ import {
 const EMAIL_REQUIRED_MESSAGE = "El correo electrónico es obligatorio.";
 const EMAIL_FORMAT_MESSAGE = "Escribe un correo electrónico válido.";
 const PASSWORD_REQUIRED_MESSAGE = "La contraseña es obligatoria.";
+const PASSWORD_MIN_LENGTH_MESSAGE = "Mínimo 6 caracteres.";
 const RESET_SEND_FAILED_MESSAGE = "No se pudo enviar el enlace de recuperación.";
 const RESET_SENT_MESSAGE =
   "Revisa tu correo. Te enviamos un enlace para restablecer tu contraseña.";
@@ -47,11 +49,11 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  // Empty fields flag only their own Input; auth failures (wrong
+  // Empty/short fields flag only their own Input; auth failures (wrong
   // credentials, existing account) stay a form-level alert so no field
   // is marked invalid for a server-side outcome. Format errors are
   // client-side and DO own the email field (blur/submit, before any
-  // network call).
+  // network call); a short password likewise owns its field pre-network.
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -99,7 +101,11 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
     // flag, and a malformed email never reaches Supabase.
     const nextEmailError = emailFieldError(email);
     const nextPasswordError =
-      password.length === 0 ? PASSWORD_REQUIRED_MESSAGE : null;
+      password.length === 0
+        ? PASSWORD_REQUIRED_MESSAGE
+        : password.length < 6
+          ? PASSWORD_MIN_LENGTH_MESSAGE
+          : null;
     setEmailError(nextEmailError);
     setPasswordError(nextPasswordError);
     if (nextEmailError || nextPasswordError) return;
@@ -154,6 +160,9 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
 
   function switchMode(next: "signin" | "signup") {
     setMode(next);
+    // Shared-device hygiene: the password never survives a mode switch,
+    // the email does (it is the recovery target for "already registered").
+    setPassword("");
     setEmailError(null);
     setPasswordError(null);
     setFormError(null);
@@ -185,10 +194,28 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
     </p>
   ) : null;
 
+  // "Already registered" carries its own recovery: one click lands on
+  // sign-in with the email preserved (switchMode keeps it, drops the
+  // password). Server failures stay form-level — the fields keep no
+  // invalid flag for a server-side outcome.
+  const showAlreadyRegisteredRecovery =
+    isSignup && formError === ALREADY_REGISTERED_MESSAGE;
   const formAlert = formError ? (
-    <p ref={formAlertRef} tabIndex={-1} role="alert" className="text-sm text-destructive">
-      {formError}
-    </p>
+    <div className="flex flex-col gap-1">
+      <p ref={formAlertRef} tabIndex={-1} role="alert" className="text-sm text-destructive">
+        {formError}
+      </p>
+      {showAlreadyRegisteredRecovery && (
+        <Button
+          type="button"
+          variant="link"
+          className="self-start px-0"
+          onClick={() => switchMode("signin")}
+        >
+          Ir a iniciar sesión
+        </Button>
+      )}
+    </div>
   ) : null;
 
   if (confirmationSent) {
@@ -332,6 +359,7 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
               className="absolute top-1/2 right-1 min-h-11 -translate-y-1/2"
               aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
               aria-pressed={showPassword}
+              disabled={busy}
               onClick={() => setShowPassword((v) => !v)}
             >
               {showPassword ? "Ocultar" : "Mostrar"}
