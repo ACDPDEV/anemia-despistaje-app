@@ -18,6 +18,7 @@ import {
   SYNC_PAGE_SIZE,
   toRemoteRow,
   fromRemoteRow,
+  filterUnchangedIds,
   getDirtyPacientes,
   markClean,
   mergePacientes,
@@ -309,6 +310,47 @@ describe("pullRemote", () => {
     expect(getDirtyPacientes(merged).map((p) => p.id)).toContain("mine");
     expect(toRemoteRow(kept)).toMatchObject({ deleted_at: "2026-10-04T10:00:00.000Z" });
     expect(merged.find((p) => p.id === "theirs")).toBeUndefined();
+  });
+});
+
+describe("push/pull interleave window (P2-2 verdict: fixed)", () => {
+  it("filterUnchangedIds keeps only rows untouched since the pre-push snapshot", () => {
+    const snapshot = [
+      makeLocal({ id: "same", updatedAt: "2026-10-01T10:00:00.000Z" }),
+      makeLocal({ id: "edited", updatedAt: "2026-10-01T10:00:00.000Z" }),
+    ];
+    const current = [
+      makeLocal({ id: "same", updatedAt: "2026-10-01T10:00:00.000Z" }),
+      makeLocal({
+        id: "edited",
+        nombre: "Ana Editada",
+        updatedAt: "2026-10-01T10:05:00.000Z",
+        dirty: true,
+      }),
+    ];
+    // The mid-flight edit changed updatedAt: excluded, stays dirty.
+    expect(filterUnchangedIds(snapshot, current, ["same", "edited"])).toEqual([
+      "same",
+    ]);
+    // A row deleted mid-flight vanishes from the merge base: never cleaned.
+    expect(filterUnchangedIds(snapshot, [], ["same"])).toEqual([]);
+  });
+
+  it("an edit landing between push and pull survives the pull merge, still dirty", () => {
+    // Remote holds the just-pushed (stale) version; local carries the newer edit.
+    const editedLocal = makeLocal({
+      nombre: "Ana Editada",
+      updatedAt: "2026-10-01T10:05:00.000Z",
+      dirty: true,
+    });
+    const merged = mergePacientes(
+      [editedLocal],
+      [makeRemote({ updated_at: "2026-10-01T10:00:00.000Z" })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].nombre).toBe("Ana Editada");
+    expect(merged[0].dirty).toBe(true);
+    expect(getDirtyPacientes(merged)).toHaveLength(1);
   });
 });
 

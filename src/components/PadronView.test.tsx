@@ -26,10 +26,11 @@ function seedTriage() {
 }
 
 function visibleNames(): string[] {
+  // Cell 0 is the bulk-selection checkbox; nombre moved to cell 1.
   return screen
     .getAllByRole("row")
     .slice(1)
-    .map((row) => within(row).getAllByRole("cell")[0].textContent ?? "");
+    .map((row) => within(row).getAllByRole("cell")[1].textContent ?? "");
 }
 
 describe("PadronView", () => {
@@ -419,6 +420,161 @@ describe("PadronView", () => {
     expect(screen.getByText("José")).toBeInTheDocument();
     expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
   });
+
+  it("renders a visually-hidden caption naming the table with the visible count", () => {
+    seedTwo();
+    const { container } = render(<PadronView />);
+    const caption = container.querySelector("caption");
+    expect(caption).not.toBeNull();
+    expect(caption).toHaveTextContent("Padrón de pacientes — 2 en vista");
+    expect(caption!.className).toMatch(/sr-only/);
+  });
+
+  it("derives the caption count from the visible rows when a filter is active", () => {
+    seedTwo();
+    const { container } = render(<PadronView />);
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "ana" },
+    });
+    expect(container.querySelector("caption")).toHaveTextContent(
+      "Padrón de pacientes — 1 en vista",
+    );
+  });
+
+  it("labels every selection checkbox and keeps a coarse-pointer hit area", () => {
+    seedTwo();
+    render(<PadronView />);
+    const headerToggle = screen.getByRole("checkbox", {
+      name: /seleccionar pacientes visibles/i,
+    });
+    expect(headerToggle.tagName).toBe("INPUT");
+    expect(headerToggle.closest("label")?.className).toMatch(
+      /pointer-coarse:min-h-11/,
+    );
+    const rowToggle = screen.getByRole("checkbox", {
+      name: /seleccionar a ana torres/i,
+    });
+    expect(rowToggle).not.toBeChecked();
+    expect(rowToggle.closest("label")?.className).toMatch(
+      /pointer-coarse:min-h-11/,
+    );
+  });
+
+  it("selects only the visible (filtered) set with select-all", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "ana" },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+    );
+    expect(screen.getByText("1 seleccionado")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    ).toBeChecked();
+    // Luis Paz is filtered out: not selected, no row, no checkbox.
+    expect(
+      screen.queryByRole("checkbox", { name: /seleccionar a luis paz/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears the selection when the filter changes", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    );
+    expect(screen.getByText("1 seleccionado")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "luis" },
+    });
+    expect(screen.queryByText(/seleccionado/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+    ).not.toBeChecked();
+  });
+
+  it("reports the select-all mixed state through indeterminate", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    );
+    const header = screen.getByRole("checkbox", {
+      name: /pacientes visibles/i,
+    }) as HTMLInputElement;
+    expect(header.indeterminate).toBe(true);
+    expect(header.checked).toBe(false);
+    fireEvent.click(header);
+    expect(
+      (screen.getByRole("checkbox", { name: /pacientes visibles/i }) as HTMLInputElement).indeterminate,
+    ).toBe(false);
+    expect(screen.getByText("2 seleccionados")).toBeInTheDocument();
+  });
+
+  it("deletes the selected rows after a single confirm and restores all with one undo", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+    );
+    expect(screen.getByText("2 seleccionados")).toBeInTheDocument();
+    // First tap only arms the batch guard: nothing deleted yet.
+    fireEvent.click(
+      screen.getByRole("button", { name: /eliminar seleccionados/i }),
+    );
+    expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+    expect(screen.queryByText(/pacientes eliminados/i)).not.toBeInTheDocument();
+    // Single confirm deletes both rows at once.
+    fireEvent.click(
+      screen.getByRole("button", { name: /confirmar eliminación/i }),
+    );
+    expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
+    expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
+    const { pacientes } = usePadronStore.getState();
+    expect(pacientes.filter((p) => !p.deletedAt)).toHaveLength(0);
+    expect(pacientes.filter((p) => p.deletedAt)).toHaveLength(2);
+    // One toast for the batch, not two.
+    expect(screen.getByText("2 pacientes eliminados.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /deshacer/i }));
+    expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.filter((p) => !p.deletedAt),
+    ).toHaveLength(2);
+  });
+
+  it("reverts the batch delete without deleting on Cancelar", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /eliminar seleccionados/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /cancelar/i }));
+    expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.filter((p) => !p.deletedAt),
+    ).toHaveLength(2);
+    expect(screen.queryByText(/pacientes eliminados/i)).not.toBeInTheDocument();
+  });
+
+  it("rejects an overlong nombre in the edit row with the store message", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    const nombreInput = screen.getByLabelText(/^nombre/i);
+    expect(nombreInput).toHaveAttribute("maxlength", "120");
+    fireEvent.change(nombreInput, { target: { value: "A".repeat(121) } });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/exceder 120/i);
+    expect(usePadronStore.getState().pacientes[0].nombre).toBe("Ana Torres");
+  });
 });
 
 describe("PadronView export actions", () => {
@@ -520,6 +676,26 @@ describe("PadronView export actions", () => {
     const text = await readBlobText(seen.blob!);
     expect(text).toContain("Ana Torres");
     expect(text).not.toContain("Luis Paz");
+    expect(text).toContain("# total: 1");
+  });
+
+  it("exports only the selected rows through Exportar seleccionados", async () => {
+    seedTwo();
+    const { seen } = mockDownloadSeam();
+    render(<PadronView />);
+    // Bulk bar appears only with a selection.
+    expect(
+      screen.queryByRole("button", { name: /exportar seleccionados/i }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a luis paz/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /exportar seleccionados/i }),
+    );
+    const text = await readBlobText(seen.blob!);
+    expect(text).toContain("Luis Paz");
+    expect(text).not.toContain("Ana Torres");
     expect(text).toContain("# total: 1");
   });
 

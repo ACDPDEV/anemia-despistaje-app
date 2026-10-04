@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import {
   bySeverity,
   findPossibleDuplicates,
+  MAX_NOMBRE,
   usePadronStore,
   type Paciente,
 } from "../stores/padronStore";
@@ -15,6 +16,7 @@ import { Input } from "./ui/input";
 import {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -23,7 +25,7 @@ import {
 import { DIAGNOSIS_BADGE } from "./DashboardView";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
 
-const COLUMN_COUNT = 5;
+const COLUMN_COUNT = 6;
 
 // Undo toast visibility window after a confirmed delete.
 const UNDO_TIMEOUT_MS = 8000;
@@ -39,24 +41,53 @@ export function PadronView({
 }) {
   const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
   const restore = usePadronStore((s) => s.restore);
+  const remove = usePadronStore((s) => s.remove);
   const [filter, setFilter] = useState("");
   const [gravesPrimero, setGravesPrimero] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Bulk selection lives over row ids. Semantics (documented, simplest
+  // sane reset): the set clears whenever the filter text changes, and
+  // every bulk action derives from selected ∩ visible — a selected row
+  // that disappears (deleted, filtered out) simply drops out of scope.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkConfirming, setBulkConfirming] = useState(false);
   const [undone, setUndone] = useState<{ id: string; nombre: string } | null>(
     null,
   );
+  const [undoneBulk, setUndoneBulk] = useState<{
+    ids: string[];
+    count: number;
+  } | null>(null);
   const undoTimer = useRef<number | undefined>(undefined);
+  const bulkConfirmTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    setSelected(new Set());
+    setBulkConfirming(false);
+    window.clearTimeout(bulkConfirmTimer.current);
+  }, [filter]);
 
   // The 8s undo window is wall-clock: a newer delete replaces the pending
   // one and restarts the timer; unmount clears it.
   useEffect(() => {
-    return () => window.clearTimeout(undoTimer.current);
+    return () => {
+      window.clearTimeout(undoTimer.current);
+      window.clearTimeout(bulkConfirmTimer.current);
+    };
   }, []);
 
   function handleDeleted(id: string, nombre: string) {
     window.clearTimeout(undoTimer.current);
+    setUndoneBulk(null);
     setUndone({ id, nombre });
     undoTimer.current = window.setTimeout(() => setUndone(null), UNDO_TIMEOUT_MS);
+  }
+
+  function handleBulkDeleted(ids: string[]) {
+    window.clearTimeout(undoTimer.current);
+    setUndone(null);
+    setUndoneBulk({ ids, count: ids.length });
+    undoTimer.current = window.setTimeout(() => setUndoneBulk(null), UNDO_TIMEOUT_MS);
   }
 
   function handleUndo() {
@@ -65,6 +96,44 @@ export function PadronView({
     window.clearTimeout(undoTimer.current);
     setUndone(null);
   }
+
+  function handleBulkUndo() {
+    if (!undoneBulk) return;
+    // Same per-row restore path as the single delete, looped: tombstone
+    // semantics per row unchanged (deletedAt cleared, dirty requeued).
+    for (const id of undoneBulk.ids) restore(id);
+    window.clearTimeout(undoTimer.current);
+    setUndoneBulk(null);
+  }
+
+  // Undo toasts render in BOTH branches below: wiping the last visible row
+  // lands on the empty state, and the 8s window must survive the crossing.
+  const singleUndoToast = undone && (
+    <div
+      role="status"
+      className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"
+    >
+      <p className="text-sm">Paciente eliminado.</p>
+      <Button type="button" size="sm" onClick={handleUndo}>
+        Deshacer
+      </Button>
+    </div>
+  );
+  const bulkUndoToast = undoneBulk && (
+    <div
+      role="status"
+      className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"
+    >
+      <p className="text-sm">
+        {undoneBulk.count === 1
+          ? "Paciente eliminado."
+          : `${undoneBulk.count} pacientes eliminados.`}
+      </p>
+      <Button type="button" size="sm" onClick={handleBulkUndo}>
+        Deshacer
+      </Button>
+    </div>
+  );
 
   if (pacientes.length === 0) {
     return (
@@ -97,6 +166,8 @@ export function PadronView({
             Use la pestaña Registro para agregar el primer paciente.
           </p>
         )}
+        {singleUndoToast}
+        {bulkUndoToast}
       </section>
     );
   }
@@ -122,9 +193,71 @@ export function PadronView({
   const now = new Date();
   const todayStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
+  // Bulk scope is always selected ∩ visible: select-all covers the
+  // filtered set only, never the whole padrón.
+  const selectedVisible = visible.filter((p) => selected.has(p.id));
+  const allVisibleSelected =
+    visible.length > 0 && selectedVisible.length === visible.length;
+  const someVisibleSelected =
+    selectedVisible.length > 0 && !allVisibleSelected;
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    if (allVisibleSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(visible.map((p) => p.id)));
+    }
+  }
+
+  function disarmBulk() {
+    window.clearTimeout(bulkConfirmTimer.current);
+    setBulkConfirming(false);
+  }
+
+  function handleBulkDeleteTap() {
+    if (selectedVisible.length === 0) return;
+    if (!bulkConfirming) {
+      setBulkConfirming(true);
+      window.clearTimeout(bulkConfirmTimer.current);
+      bulkConfirmTimer.current = window.setTimeout(disarmBulk, 4000);
+      return;
+    }
+    window.clearTimeout(bulkConfirmTimer.current);
+    setBulkConfirming(false);
+    const ids = selectedVisible.map((p) => p.id);
+    for (const id of ids) remove(id);
+    if (editingId !== null && ids.includes(editingId)) setEditingId(null);
+    setSelected(new Set());
+    handleBulkDeleted(ids);
+  }
+
   function handleExport() {
     if (visible.length === 0) return;
     const csv = buildPadronCsv(visible, new Date());
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = padronFilename(new Date());
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Same Blob/URL seam as the full export, restricted to the selected ∩
+  // visible rows. buildPadronCsv stays pure over any row set, so no CSV
+  // format change: only the input rows narrow.
+  function handleExportSelected() {
+    if (selectedVisible.length === 0) return;
+    const csv = buildPadronCsv(selectedVisible, new Date());
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -211,9 +344,94 @@ export function PadronView({
           Ver moderados y severos primero
         </label>
       </div>
+      {selectedVisible.length > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-2"
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) disarmBulk();
+          }}
+        >
+          <p className="text-sm text-muted-foreground">
+            {selectedVisible.length === 1
+              ? "1 seleccionado"
+              : `${selectedVisible.length} seleccionados`}
+          </p>
+          {bulkConfirming ? (
+            <>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="pointer-coarse:min-h-11"
+                aria-label={`Confirmar eliminación de ${selectedVisible.length} pacientes seleccionados`}
+                onClick={handleBulkDeleteTap}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") disarmBulk();
+                }}
+              >
+                Confirmar
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="pointer-coarse:min-h-11"
+                onClick={disarmBulk}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") disarmBulk();
+                }}
+              >
+                Cancelar
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="pointer-coarse:min-h-11"
+                onClick={handleBulkDeleteTap}
+              >
+                Eliminar seleccionados
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="pointer-coarse:min-h-11"
+                onClick={handleExportSelected}
+              >
+                Exportar seleccionados
+              </Button>
+            </>
+          )}
+        </div>
+      )}
       <Table className="padron-table">
+        <TableCaption className="sr-only">
+          Padrón de pacientes — {visible.length} en vista
+        </TableCaption>
         <TableHeader>
           <TableRow>
+            <TableHead>
+              <label className="flex cursor-pointer items-center gap-2 pointer-coarse:min-h-11">
+                <Checkbox
+                  checked={allVisibleSelected}
+                  ref={(node) => {
+                    // Mixed state when only some visible rows are selected.
+                    // Inline callback (not an effect: hooks cannot run here,
+                    // past the empty-state early return) re-runs each render.
+                    if (node) {
+                      node.indeterminate =
+                        someVisibleSelected && !allVisibleSelected;
+                    }
+                  }}
+                  onChange={toggleAllVisible}
+                />
+                <span className="sr-only">Seleccionar pacientes visibles</span>
+              </label>
+            </TableHead>
             <TableHead>Nombre</TableHead>
             <TableHead>Edad (meses)</TableHead>
             <TableHead>Hemoglobina (g/dL)</TableHead>
@@ -242,6 +460,8 @@ export function PadronView({
                 <PadronRow
                   key={p.id}
                   paciente={p}
+                  selected={selected.has(p.id)}
+                  onToggle={() => toggleOne(p.id)}
                   onEdit={() => setEditingId(p.id)}
                   onDeleted={handleDeleted}
                 />
@@ -250,27 +470,22 @@ export function PadronView({
           )}
         </TableBody>
       </Table>
-      {undone && (
-        <div
-          role="status"
-          className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"
-        >
-          <p className="text-sm">Paciente eliminado.</p>
-          <Button type="button" size="sm" onClick={handleUndo}>
-            Deshacer
-          </Button>
-        </div>
-      )}
+      {singleUndoToast}
+      {bulkUndoToast}
     </section>
   );
 }
 
 function PadronRow({
   paciente,
+  selected,
+  onToggle,
   onEdit,
   onDeleted,
 }: {
   paciente: Paciente;
+  selected: boolean;
+  onToggle: () => void;
   onEdit: () => void;
   onDeleted: (id: string, nombre: string) => void;
 }) {
@@ -307,6 +522,12 @@ function PadronRow({
 
   return (
     <TableRow>
+      <TableCell>
+        <label className="flex cursor-pointer items-center gap-2 pointer-coarse:min-h-11">
+          <Checkbox checked={selected} onChange={onToggle} />
+          <span className="sr-only">Seleccionar a {paciente.nombre}</span>
+        </label>
+      </TableCell>
       <TableCell className="font-medium">{paciente.nombre}</TableCell>
       <TableCell>{paciente.edadMeses}</TableCell>
       <TableCell>{paciente.nivelHemoglobina}</TableCell>
@@ -409,7 +630,11 @@ function PadronEditRow({
     const edadMeses = Number(edad);
     const nivelHemoglobina = Number(hb);
     const nextNombreError =
-      nombre.trim().length === 0 ? "El nombre del paciente es obligatorio." : null;
+      nombre.trim().length === 0
+        ? "El nombre del paciente es obligatorio."
+        : nombre.trim().length > MAX_NOMBRE
+          ? `El nombre no puede exceder ${MAX_NOMBRE} caracteres.`
+          : null;
     const nextEdadError =
       !Number.isInteger(edadMeses) || edadMeses < 6 || edadMeses > 59
         ? "La edad debe estar entre 6 y 59 meses."
@@ -461,6 +686,7 @@ function PadronEditRow({
             <Input
               id={`nombre-${paciente.id}`}
               value={nombre}
+              maxLength={MAX_NOMBRE}
               onChange={(e) => {
                 setNombre(e.target.value);
                 if (nombreError) setNombreError(null);

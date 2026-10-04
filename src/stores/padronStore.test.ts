@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  MAX_NOMBRE,
   MAX_PADRON,
   bySeverity,
   findPossibleDuplicates,
@@ -42,6 +43,22 @@ describe("padronStore", () => {
     expect(() => addPatient({ edadMeses: 6.5 })).toThrow(/edad/i);
     expect(() => addPatient({ edadMeses: NaN })).toThrow(/edad/i);
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
+  });
+
+  it("caps nombre at MAX_NOMBRE (120) with a Spanish message on add and update", () => {
+    expect(MAX_NOMBRE).toBe(120);
+    expect(() => addPatient({ nombre: "A".repeat(121) })).toThrow(
+      /exceder 120 caracteres/i,
+    );
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
+    // Boundary: exactly 120 registers.
+    addPatient({ nombre: "A".repeat(120) });
+    expect(usePadronStore.getState().pacientes).toHaveLength(1);
+    const id = usePadronStore.getState().pacientes[0].id;
+    expect(() =>
+      usePadronStore.getState().update(id, { nombre: "B".repeat(121) }),
+    ).toThrow(/exceder 120 caracteres/i);
+    expect(usePadronStore.getState().pacientes[0].nombre).toBe("A".repeat(120));
   });
 
   it("rejects non-integer ages on update with an edad message (B1)", () => {

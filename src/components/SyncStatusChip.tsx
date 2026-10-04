@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePadronStore } from "../stores/padronStore";
 import { useOnline } from "../hooks/useOnline";
-import { createSupabaseSyncTable, pushDirty } from "../lib/sync";
+import { createSupabaseSyncTable, filterUnchangedIds, pushDirty } from "../lib/sync";
 import { getSupabaseClient } from "../lib/supabase";
 import {
   guardedPull,
@@ -84,7 +84,22 @@ export function SyncStatusChip() {
 
     const { applyPullMerge, markSynced, purgeSyncedTombstones } =
       usePadronStore.getState();
-    if (pushedIds.length > 0) markSynced(pushedIds);
+    // Interleave window, proven safe by merge + this guard. Push and pull
+    // run in two runGuarded acquisitions, so an edit can land in between.
+    // The pull side is benign: mergePacientes is last-write-wins on
+    // updatedAt, so a mid-flight edit (newer updatedAt) survives the merge
+    // and stays dirty for the next push. The push side was NOT: markSynced
+    // clears by id, so an edit to a just-pushed row would lose its dirty
+    // flag and never replicate. Only ids whose updatedAt still matches the
+    // pre-push snapshot go clean; edited rows keep dirty=true.
+    if (pushedIds.length > 0) {
+      const unchanged = filterUnchangedIds(
+        snapshot,
+        usePadronStore.getState().pacientes,
+        pushedIds,
+      );
+      if (unchanged.length > 0) markSynced(unchanged);
+    }
     // Replicated tombstones are now clean and safe to collect.
     purgeSyncedTombstones();
 
@@ -132,6 +147,7 @@ export function SyncStatusChip() {
             type="button"
             variant="outline"
             size="xs"
+            className="pointer-coarse:min-h-11"
             disabled={syncing}
             onClick={() => void handleSync()}
           >

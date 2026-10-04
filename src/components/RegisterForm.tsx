@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { findPossibleDuplicates, usePadronStore } from "../stores/padronStore";
+import { findPossibleDuplicates, MAX_NOMBRE, usePadronStore } from "../stores/padronStore";
 import { HB_CUTOFF_LABEL, type Diagnosis } from "../domain/anemia";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -30,7 +30,11 @@ export function RegisterForm() {
 
     // Collect every field error so one submit surfaces all of them.
     const nextNombreError =
-      nombre.trim().length === 0 ? "El nombre del paciente es obligatorio." : null;
+      nombre.trim().length === 0
+        ? "El nombre del paciente es obligatorio."
+        : nombre.trim().length > MAX_NOMBRE
+          ? `El nombre no puede exceder ${MAX_NOMBRE} caracteres.`
+          : null;
     const edadMeses = Number(edad);
     const nextEdadError =
       !Number.isInteger(edadMeses) || edadMeses < 6 || edadMeses > 59
@@ -79,6 +83,7 @@ export function RegisterForm() {
           <Input
             id="nombre"
             value={nombre}
+            maxLength={MAX_NOMBRE}
             onChange={(e) => {
               setNombre(e.target.value);
               if (nombreError) setNombreError(null);
@@ -132,16 +137,25 @@ export function RegisterForm() {
           {formError}
         </p>
       )}
-      {lastDiagnosis && (
-        <p role="status" className="text-sm text-success">
-          Paciente registrado: <strong>{lastDiagnosis}</strong>
+      {/* Single polite announcer: success and duplicate warning used to be
+          sibling role=status regions racing each other. One region with
+          both messages in DOM order (success first) serializes the
+          announcement; the Descartar button stays outside the live region. */}
+      {(lastDiagnosis || duplicateWarning) && (
+        <p role="status" className="text-sm">
+          {lastDiagnosis && (
+            <span className="text-success">
+              Paciente registrado: <strong>{lastDiagnosis}</strong>
+            </span>
+          )}
+          {lastDiagnosis && duplicateWarning && " "}
+          {duplicateWarning && (
+            <span className="text-warning">{duplicateWarning}</span>
+          )}
         </p>
       )}
       {duplicateWarning && (
-        <div className="flex items-center gap-2">
-          <p role="status" className="text-sm text-warning">
-            {duplicateWarning}
-          </p>
+        <div>
           <Button
             type="button"
             variant="outline"

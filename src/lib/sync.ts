@@ -85,6 +85,21 @@ export function markClean(local: Paciente[], ids: string[]): Paciente[] {
   return local.map((p) => (pushed.has(p.id) ? { ...p, dirty: false } : p));
 }
 
+// Version-guarded clean-marking for the push/pull interleave window. The
+// chip snapshots the padron before push and marks clean after; an edit that
+// lands in between bumps updatedAt, so any pushed id whose current updatedAt
+// differs from the snapshot keeps dirty=true and rides the next push. Pure
+// (id + updatedAt comparison) so the window is provable in tests.
+export function filterUnchangedIds(
+  snapshot: Paciente[],
+  current: Paciente[],
+  pushedIds: string[],
+): string[] {
+  const before = new Map(snapshot.map((p) => [p.id, p.updatedAt]));
+  const now = new Map(current.map((p) => [p.id, p.updatedAt]));
+  return pushedIds.filter((id) => now.has(id) && now.get(id) === before.get(id));
+}
+
 // Last-write-wins merge on updatedAt (ISO strings compare chronologically).
 // Local order is preserved; remote-only rows append in remote order. A row
 // whose winning version carries deletedAt is dropped (tombstone).

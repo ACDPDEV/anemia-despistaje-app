@@ -7,6 +7,11 @@ import { normalizeNombre } from "../lib/normalize";
 // The 101st registration is rejected with a Spanish message.
 export const MAX_PADRON = 100;
 
+// Product cap for nombre: the Supabase column is unbounded `text`
+// (char_length(nombre) > 0 only), so the client owns the bound. 120 covers
+// long double-barrelled names without letting one row wreck the table or CSV.
+export const MAX_NOMBRE = 120;
+
 // Severity queue rank: lower runs first when "moderados y severos primero" is active.
 export const SEVERITY_RANK: Record<Diagnosis, number> = {
   "Anemia Severa": 0,
@@ -85,6 +90,9 @@ function generateId(): string {
 function validateInput(input: NewPaciente): void {
   if (!input.nombre || input.nombre.trim().length === 0) {
     throw new Error("El nombre del paciente es obligatorio.");
+  }
+  if (input.nombre.trim().length > MAX_NOMBRE) {
+    throw new Error(`El nombre no puede exceder ${MAX_NOMBRE} caracteres.`);
   }
   if (!Number.isInteger(input.edadMeses)) {
     throw new Error("La edad debe estar entre 6 y 59 meses.");

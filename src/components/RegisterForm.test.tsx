@@ -127,8 +127,9 @@ describe("RegisterForm", () => {
 
     const confirmation = screen.getByRole("status");
     expect(confirmation).toHaveTextContent(/paciente registrado/i);
-    expect(confirmation.className).toMatch(/text-success/);
-    expect(confirmation.className).not.toMatch(/green-700/);
+    // Theme token lives on the inner span: the region itself stays neutral.
+    expect(confirmation.querySelector(".text-success")).not.toBeNull();
+    expect(confirmation.innerHTML).not.toMatch(/green-700/);
   });
 
   it("announces the duplicate warning as a non-interrupting status", () => {
@@ -139,13 +140,15 @@ describe("RegisterForm", () => {
     fillAndSubmit("maria lopez", "24", "12.0");
 
     // Warning, not alert: a status never steals typing focus.
-    const warning = screen
-      .getByText(/posible duplicado/i)
-      .closest('[role="status"]');
-    expect(warning).not.toBeNull();
-    expect(warning!.getAttribute("role")).toBe("status");
-    // Success confirmation and warning coexist as separate statuses.
-    expect(screen.getAllByRole("status")).toHaveLength(2);
+    const warning = screen.getByText(/posible duplicado/i);
+    const liveRegion = warning.closest('[role="status"]')!;
+    expect(liveRegion.getAttribute("role")).toBe("status");
+    // Serialized announcer: success and warning share ONE status, ordered.
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(liveRegion.textContent!.indexOf("registrado")).toBeLessThan(
+      liveRegion.textContent!.indexOf("duplicado"),
+    );
+    expect(warning.closest("span")!.className).toMatch(/text-warning/);
   });
 
   it("dismisses the duplicate hint without losing the registration", () => {
@@ -181,5 +184,16 @@ describe("RegisterForm", () => {
     // Real values, never retyped: the hint quotes the domain label.
     expect(screen.getByTestId("hb-cutoffs")).toHaveTextContent(HB_CUTOFF_LABEL);
     expect(HB_CUTOFF_LABEL).toMatch(/11/);
+  });
+
+  it("caps the nombre input at 120 characters with a Spanish message", () => {
+    render(<RegisterForm />);
+    expect(screen.getByLabelText(/nombre/i)).toHaveAttribute(
+      "maxlength",
+      "120",
+    );
+    fillAndSubmit("A".repeat(121), "24", "12.0");
+    expect(screen.getByRole("alert")).toHaveTextContent(/exceder 120/i);
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
 });

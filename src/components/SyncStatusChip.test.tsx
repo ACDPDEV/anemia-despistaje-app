@@ -262,4 +262,42 @@ describe("SyncStatusChip", () => {
     await screen.findByText("A salvo en este equipo");
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
+
+  it("gives the sync action a coarse-pointer minimum height", () => {
+    seedDirty();
+    render(<SyncStatusChip />);
+    expect(
+      screen.getByRole("button", { name: /^sincronizar$/i }).className,
+    ).toMatch(/pointer-coarse:min-h-11/);
+  });
+
+  it("keeps a mid-flight edit dirty: push-then-mark never clears newer updatedAt", async () => {
+    const id = seedDirty();
+    // Pin the snapshot timestamp: update() stamps wall-clock now, so the
+    // mid-flight edit always moves updatedAt (no same-millisecond flake).
+    usePadronStore.setState((state) => ({
+      pacientes: state.pacientes.map((p) => ({
+        ...p,
+        updatedAt: "2026-10-01T10:00:00.000Z",
+      })),
+    }));
+    // The edit lands after the pre-push snapshot but before markSynced:
+    // pushedIds still name the row, yet its updatedAt moved on.
+    pushMock.mockImplementationOnce(async () => {
+      usePadronStore.getState().update(id, { nombre: "Ana Editada" });
+      return {
+        ok: true,
+        pushedIds: [id],
+        message: "Se sincronizó 1 registro con Supabase.",
+      };
+    });
+    render(<SyncStatusChip />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+
+    await screen.findByText("1 por sincronizar");
+    const row = usePadronStore.getState().pacientes[0];
+    expect(row.nombre).toBe("Ana Editada");
+    expect(row.dirty).toBe(true);
+  });
 });
