@@ -440,11 +440,20 @@ describe("PadronView", () => {
     ).toBeInTheDocument();
   });
 
-  it("explains the disabled actions in the empty state", () => {
+  it("keeps the empty state quiet: one sentence, CTA, no dead actions", () => {
     render(<PadronView />);
     expect(
-      screen.getByText(/disponibles con pacientes registrados/i),
+      screen.getByText(/no hay pacientes registrados/i),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/disponibles con pacientes registrados/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /exportar csv/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /imprimir/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("matches accented names from an unaccented filter", () => {
@@ -517,20 +526,146 @@ describe("PadronView", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("clears the selection when the filter changes", () => {
+  it("preserves the selection when the filter changes", () => {
     seedTwo();
     render(<PadronView />);
     fireEvent.click(
       screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
     );
     expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
+    // Narrowing to Luis hides Ana but keeps her selection: the bulk bar
+    // scopes to the visible set, so with nothing visible it stands down.
     fireEvent.change(screen.getByLabelText(/buscar/i), {
       target: { value: "luis" },
     });
-    expect(screen.queryByText(/seleccionado/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
     expect(
+      screen.queryByRole("button", { name: /eliminar seleccionados/i }),
+    ).not.toBeInTheDocument();
+    // Back to the full view: Ana is still selected, count live.
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "" },
+    });
+    expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    ).toBeChecked();
+  });
+
+  it("scopes bulk delete to selected ∩ visible, leaving hidden selections intact", () => {
+    seedTwo();
+    render(<PadronView />);
+    // Select both rows, then narrow to Ana: the bar counts 1 in vista.
+    fireEvent.click(
       screen.getByRole("checkbox", { name: /pacientes visibles/i }),
-    ).not.toBeChecked();
+    );
+    expect(screen.getByText("2 seleccionados en vista")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "ana" },
+    });
+    expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
+    // Confirm the bulk delete: only the visible Ana is tombstoned.
+    fireEvent.click(
+      screen.getByRole("button", { name: /eliminar seleccionados/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /confirmar eliminación/i }),
+    );
+    expect(screen.getByText(/paciente eliminado/i)).toBeInTheDocument();
+    // Clearing the filter reveals Luis alive AND still selected.
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "" },
+    });
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /seleccionar a luis paz/i }),
+    ).toBeChecked();
+  });
+
+  it("merges select-all into hidden selections instead of replacing them", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "luis" },
+    });
+    // Select-all covers the visible Luis only; Ana's hidden selection stays.
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+    );
+    expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "" },
+    });
+    expect(screen.getByText("2 seleccionados en vista")).toBeInTheDocument();
+  });
+
+  it("extends the undo window on toast interaction instead of expiring", () => {
+    vi.useFakeTimers();
+    try {
+      seedTwo();
+      render(<PadronView />);
+      const row = rowByName("Luis Paz");
+      fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+      fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+      expect(screen.getByTestId("undo-toast")).toBeInTheDocument();
+      // 7s pass, then activity inside a toast row restarts the 8s window
+      // (the capture handlers live on the row, so the event must target
+      // a descendant, as a real pointer would).
+      act(() => {
+        vi.advanceTimersByTime(7000);
+      });
+      fireEvent.pointerOver(
+        screen.getByRole("button", { name: /deshacer/i }),
+      );
+      act(() => {
+        vi.advanceTimersByTime(7000);
+      });
+      // 14s total, but the window slid: the toast stands.
+      expect(screen.getByTestId("undo-toast")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /deshacer/i }),
+      ).toBeInTheDocument();
+      // Without further interaction the window expires for real.
+      act(() => {
+        vi.advanceTimersByTime(8000);
+      });
+      expect(screen.queryByTestId("undo-toast")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("dismisses the toast without restoring through Cerrar aviso", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    expect(screen.getByText(/paciente eliminado/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /cerrar aviso/i }));
+    // Notice gone, tombstone stays: no restore, row stays deleted.
+    expect(screen.queryByTestId("undo-toast")).not.toBeInTheDocument();
+    expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.nombre === "Luis Paz")!
+        .deletedAt,
+    ).toEqual(expect.any(String));
+  });
+
+  it("anchors the undo toast full-width on small screens", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    const toast = screen.getByTestId("undo-toast");
+    expect(toast.className).toMatch(/max-sm:left-4/);
+    expect(toast.className).toMatch(/max-sm:right-4/);
+    expect(toast.className).toMatch(/max-sm:max-w-none/);
   });
 
   it("reports the select-all mixed state through indeterminate", () => {
@@ -1111,14 +1246,16 @@ describe("PadronView export actions", () => {
     expect(screen.getByRole("button", { name: /imprimir/i })).toBeDisabled();
   });
 
-  it("renders both actions disabled with the empty state and downloads nothing", () => {
+  it("renders no export or print actions in the empty state", () => {
     const { clicks } = mockDownloadSeam();
     render(<PadronView />);
     expect(screen.getByText(/no hay pacientes registrados/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /exportar csv/i }),
-    ).toBeDisabled();
-    expect(screen.getByRole("button", { name: /imprimir/i })).toBeDisabled();
+      screen.queryByRole("button", { name: /exportar csv/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /imprimir/i }),
+    ).not.toBeInTheDocument();
     expect(clicks).toHaveLength(0);
   });
 
@@ -1173,6 +1310,25 @@ describe("PadronView export actions", () => {
     const text = await readBlobText(seen.blob!);
     expect(text).toContain("Luis Paz");
     expect(text).not.toContain("Ana Torres");
+    expect(text).toContain("# total: 1");
+  });
+
+  it("exports selected ∩ visible only when a filter hides a selection", async () => {
+    seedTwo();
+    const { seen } = mockDownloadSeam();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "ana" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /exportar seleccionados/i }),
+    );
+    const text = await readBlobText(seen.blob!);
+    expect(text).toContain("Ana Torres");
+    expect(text).not.toContain("Luis Paz");
     expect(text).toContain("# total: 1");
   });
 

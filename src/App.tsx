@@ -6,6 +6,7 @@ import { DashboardView } from "./components/DashboardView";
 import { LoginView } from "./components/LoginView";
 import { AppSidebar, type TabId } from "./components/app-sidebar";
 import { BrandLockup } from "./components/BrandLockup";
+import { Card, CardContent, CardHeader } from "./components/ui/card";
 import {
   SidebarInset,
   SidebarProvider,
@@ -78,11 +79,21 @@ export default function App() {
   }
 
   if (authConfigured && !session) {
+    // Login card: header owns the brand + page title (h1 stays the page
+    // title), body owns the form. No offline-first reassurance line: at
+    // this gate sign-in is still required, so that promise would be false
+    // here (PRODUCT.md principle 1 applies past the gate, not on it).
     return (
       <main className="mx-auto flex w-full max-w-md flex-col gap-4 p-6">
-        <BrandLockup />
-        <h1 className="text-2xl font-semibold">Despistaje de Anemia</h1>
-        <LoginView />
+        <Card>
+          <CardHeader>
+            <BrandLockup />
+            <h1 className="text-2xl font-semibold">Despistaje de Anemia</h1>
+          </CardHeader>
+          <CardContent>
+            <LoginView />
+          </CardContent>
+        </Card>
       </main>
     );
   }

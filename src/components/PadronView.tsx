@@ -26,6 +26,7 @@ import {
 import { DIAGNOSIS_BADGE } from "./DashboardView";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
 import { useSlidingExpiry } from "../hooks/useSlidingExpiry";
+import { XIcon } from "lucide-react";
 
 const COLUMN_COUNT = 6;
 
@@ -68,10 +69,11 @@ export function PadronView({
   const [filter, setFilter] = useState("");
   const [gravesPrimero, setGravesPrimero] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Bulk selection lives over row ids. Semantics (documented, simplest
-  // sane reset): the set clears whenever the filter text changes, and
-  // every bulk action derives from selected ∩ visible — a selected row
-  // that disappears (deleted, filtered out) simply drops out of scope.
+  // Bulk selection lives over row ids and SURVIVES filter changes:
+  // hidden selections persist but never act. Every bulk consumer (bulk
+  // bar count, select-all state, bulk delete, selected export) derives
+  // from selected ∩ visible ONLY, so a filtered-out row can never be
+  // deleted or exported by a bulk action.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkConfirming, setBulkConfirming] = useState(false);
   const [undoGroups, setUndoGroups] = useState<UndoGroup[]>([]);
@@ -122,8 +124,10 @@ export function PadronView({
   >(null);
   const prevUndoCount = useRef(0);
 
+  // Filter changes disarm a pending bulk confirm (its scope just moved)
+  // but never wipe the selection itself: hidden selections persist and
+  // the bulk bar count (derived from selected ∩ visible) updates live.
   useEffect(() => {
-    setSelected(new Set());
     disarmBulk();
   }, [filter, disarmBulk]);
 
@@ -189,6 +193,19 @@ export function PadronView({
       evictionTiedKey.current = null;
       setEvictionNotice(null);
     }
+  }
+
+  // Sliding 8s window per group: pointer/keyboard activity inside a toast
+  // row restarts that group's own timer (useSlidingExpiry pattern, kept
+  // per-group so concurrent nets stay independent). restore() untouched.
+  function resetGroupTimer(key: number) {
+    if (!groupsRef.current.some((g) => g.key === key)) return;
+    const timer = undoTimers.current.get(key);
+    if (timer !== undefined) window.clearTimeout(timer);
+    undoTimers.current.set(
+      key,
+      window.setTimeout(() => dismissGroup(key), UNDO_TIMEOUT_MS),
+    );
   }
 
   function pushUndoGroup(ids: string[], label: string) {
@@ -319,19 +336,36 @@ export function PadronView({
 
   // Undo toasts render in BOTH branches below: wiping the last visible row
   // lands on the empty state, and each 8s window must survive the crossing.
-  // Up to 3 compact rows (newest first), each with its own Deshacer.
+  // Up to 3 compact rows (newest first), each with its own Deshacer plus a
+  // dismiss (×) that drops the notice without restoring (tombstone stays).
+  // Small screens: full-width bottom sheet (left+right anchored, no
+  // max-width) so the toast never hovers over the row action column.
   const undoToast = undoGroups.length > 0 && (
     <div
       role="status"
       data-testid="undo-toast"
       ref={undoBoxRef}
-      className="fixed bottom-4 right-4 z-50 flex max-w-sm flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"
+      className="fixed right-4 bottom-4 z-50 flex max-w-sm flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 shadow-lg max-sm:right-4 max-sm:left-4 max-sm:max-w-none"
     >
       {[...undoGroups].reverse().map((group) => (
-        <div key={group.key} className="flex items-center gap-3">
+        <div
+          key={group.key}
+          className="flex items-center gap-3"
+          onPointerOverCapture={() => resetGroupTimer(group.key)}
+          onKeyDownCapture={() => resetGroupTimer(group.key)}
+        >
           <p className="text-sm">{group.label}</p>
           <Button type="button" size="sm" onClick={() => handleUndoGroup(group.key)}>
             Deshacer
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Cerrar aviso"
+            onClick={() => dismissGroup(group.key)}
+          >
+            <XIcon aria-hidden="true" />
           </Button>
         </div>
       ))}
@@ -344,32 +378,22 @@ export function PadronView({
   if (pacientes.length === 0) {
     return (
       <section ref={sectionRef} className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
-          <div className="padron-actions flex gap-2">
-            <Button type="button" disabled>
-              Exportar CSV
-            </Button>
-            <Button type="button" variant="outline" disabled>
-              Imprimir
-            </Button>
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          No hay pacientes registrados.
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Exportar e imprimir estarán disponibles con pacientes registrados.
-        </p>
+        <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
         {onEmptyRegister ? (
-          <div>
-            <Button type="button" onClick={onEmptyRegister}>
-              Registrar paciente
-            </Button>
-          </div>
+          <>
+            <p className="text-sm text-muted-foreground">
+              No hay pacientes registrados.
+            </p>
+            <div>
+              <Button type="button" onClick={onEmptyRegister}>
+                Registrar paciente
+              </Button>
+            </div>
+          </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Use la pestaña Registro para agregar el primer paciente.
+            No hay pacientes registrados. Use la pestaña Registro para
+            agregar el primer paciente.
           </p>
         )}
         {undoToast}
@@ -427,9 +451,15 @@ export function PadronView({
 
   function toggleAllVisible() {
     if (allVisibleSelected) {
-      setSelected(new Set());
+      // Deselect only the visible scope: hidden selections persist.
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const p of visible) next.delete(p.id);
+        return next;
+      });
     } else {
-      setSelected(new Set(visible.map((p) => p.id)));
+      // Select the visible scope on top of any hidden selections.
+      setSelected((prev) => new Set([...prev, ...visible.map((p) => p.id)]));
     }
   }
 
@@ -445,7 +475,12 @@ export function PadronView({
     for (const id of ids) remove(id);
     if (editingId !== null && ids.includes(editingId)) setEditingId(null);
     setEditDirty(false);
-    setSelected(new Set());
+    // Scrub only the deleted ids: hidden selections persist untouched.
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
     handleBulkDeleted(ids);
   }
 

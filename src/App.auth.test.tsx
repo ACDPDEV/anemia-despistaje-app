@@ -157,4 +157,26 @@ describe("App auth gating", () => {
     );
     expect(screen.getByTestId("brand-lockup")).toBeInTheDocument();
   });
+
+  it("wraps the login in the design-system Card: brand + title in header, form in body", async () => {
+    mockedAuth.isAuthConfigured.mockReturnValue(true);
+    mockedAuth.getSession.mockResolvedValue(null);
+    const { container } = render(<App />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /iniciar sesión/i }),
+      ).toBeInTheDocument(),
+    );
+    const card = container.querySelector('[data-slot="card"]');
+    expect(card).not.toBeNull();
+    const header = card!.querySelector('[data-slot="card-header"]');
+    expect(header).not.toBeNull();
+    expect(header).toContainElement(screen.getByTestId("brand-lockup"));
+    expect(header!.querySelector("h1")).toHaveTextContent(
+      "Despistaje de Anemia",
+    );
+    const content = card!.querySelector('[data-slot="card-content"]');
+    expect(content).not.toBeNull();
+    expect(content!.querySelector("#login-email")).not.toBeNull();
+  });
 });
