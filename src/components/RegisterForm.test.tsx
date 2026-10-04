@@ -190,9 +190,11 @@ describe("RegisterForm", () => {
     const edad = screen.getByLabelText(/edad/i);
     const hb = screen.getByLabelText(/hemoglobina/i);
 
-    // Only nombre is invalid and points at its own error id.
+    // Only nombre is invalid and points at its hint plus its error id.
     expect(nombre).toHaveAttribute("aria-invalid", "true");
-    expect(nombre).toHaveAttribute("aria-describedby", "nombre-error");
+    const nombreDescribedBy = nombre.getAttribute("aria-describedby")!;
+    expect(nombreDescribedBy).toContain("nombre-hint");
+    expect(nombreDescribedBy).toContain("nombre-error");
     expect(screen.getByRole("alert")).toHaveAttribute("id", "nombre-error");
     expect(edad).not.toHaveAttribute("aria-invalid");
     // Edad and Hb always carry their calm one-line hints.
@@ -213,6 +215,22 @@ describe("RegisterForm", () => {
     expect(edadDescribedBy).toContain("edad-error");
     expect(screen.getByLabelText(/nombre/i)).not.toHaveAttribute(
       "aria-invalid",
+    );
+    // run-30 P2: the valid nombre keeps its quiet hint wired.
+    expect(screen.getByLabelText(/nombre/i)).toHaveAttribute(
+      "aria-describedby",
+      "nombre-hint",
+    );
+  });
+
+  it("wires the nombre hint in the valid state (run-30 P2)", () => {
+    render(<RegisterForm />);
+    const nombre = screen.getByLabelText(/nombre/i);
+    expect(nombre).toHaveAttribute("aria-describedby", "nombre-hint");
+    const hint = document.getElementById("nombre-hint")!;
+    expect(hint).toHaveTextContent("Nombre completo del paciente");
+    expect(nombre.getAttribute("aria-describedby")).toContain(
+      hint.getAttribute("id"),
     );
   });
 
@@ -270,6 +288,14 @@ describe("RegisterForm", () => {
     // ONE line on phones: long names truncate instead of wrapping.
     const receipt = confirmation.querySelector(".text-success")!;
     expect(receipt.className).toMatch(/truncate/);
+  });
+
+  it("keeps the receipt clear of the sticky phone bar (run-30 P3-1)", () => {
+    render(<RegisterForm />);
+    fillAndSubmit("Ana Torres", "24", "12.0");
+    const receipt = screen.getByRole("status");
+    // Cheap scroll clearance only: no visual change, just scroll-margin.
+    expect(receipt.className).toMatch(/scroll-mb-24/);
   });
 
   it("exposes the Alt+S shortcut on the submit button", () => {

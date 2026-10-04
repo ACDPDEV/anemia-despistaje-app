@@ -145,6 +145,8 @@ export function DashboardView({
   // holds at most 4 focal points (bands, chart, legend, risk line never
   // share a screen). Controlled open state survives React re-renders; no
   // matchMedia override (it stole the user's collapse state on resize).
+  // run-30 P3 (both-disclosures, keep-as-is): both open is user-opened,
+  // so controlled state stays the correct call — no action.
   const [hbOpen, setHbOpen] = useState(false);
   const [ageOpen, setAgeOpen] = useState(false);
   // Bar hue for each age band follows the worst diagnosis seen in that
@@ -173,7 +175,14 @@ export function DashboardView({
 
       {isEmpty && onEmptyRegister && (
         <div>
-          <Button type="button" onClick={onEmptyRegister}>
+          {/* run-30 P3-2 (clarify, cheap): visual copy unchanged; the
+              aria-label disambiguates this empty-state CTA from the
+              in-form submit for SR users. */}
+          <Button
+            type="button"
+            onClick={onEmptyRegister}
+            aria-label="Registrar paciente (ir a Registro)"
+          >
             Registrar paciente
           </Button>
         </div>
@@ -316,7 +325,9 @@ export function DashboardView({
               {/* Visible legend dropped (distill): the 4 band cards above
                   already name every band, so chips here only repeated
                   chart-owned data. The sr-only table below stays the
-                  canonical AT source with full names. */}
+                  canonical AT source with full names. run-30 P3 (Hb hue
+                  carrier, keep-as-is): description + adjacent band cards
+                  are sufficient — no per-bar carrier. */}
               <table data-testid="hb-data-table" className="sr-only">
                 <caption>Distribución de hemoglobina por diagnóstico</caption>
                 <tbody>

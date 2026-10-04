@@ -240,7 +240,12 @@ describe("DashboardView", () => {
     const onEmptyRegister = vi.fn();
     render(<DashboardView onEmptyRegister={onEmptyRegister} />);
     expect(screen.getByTestId("empty-guide")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /registrar paciente/i }));
+    // run-30 P3-2: visual copy unchanged; SR name disambiguates from the
+    // in-form submit.
+    const cta = screen.getByRole("button", { name: /registrar paciente/i });
+    expect(cta).toHaveAttribute("aria-label", "Registrar paciente (ir a Registro)");
+    expect(cta).toHaveTextContent(/^registrar paciente$/i);
+    fireEvent.click(cta);
     expect(onEmptyRegister).toHaveBeenCalledTimes(1);
   });
 

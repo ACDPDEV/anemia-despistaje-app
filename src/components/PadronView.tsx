@@ -524,7 +524,14 @@ export function PadronView({
               No hay pacientes registrados.
             </p>
             <div>
-              <Button type="button" onClick={onEmptyRegister}>
+              {/* run-30 P3-2 (clarify, cheap): visual copy unchanged; the
+                  aria-label disambiguates this empty-state CTA from the
+                  in-form submit for SR users. */}
+              <Button
+                type="button"
+                onClick={onEmptyRegister}
+                aria-label="Registrar paciente (ir a Registro)"
+              >
                 Registrar paciente
               </Button>
             </div>
@@ -1323,12 +1330,13 @@ function PadronEditRow({
 
   // Per-field validation mirrors RegisterForm: same clinical copy, each
   // Input pointing at its own error id, invalid flag only on offenders.
-  // Edad/Hb hints mirror the create form (same copy, row-scoped ids). The
-  // row form is noValidate (Spanish-first, same decision as RegisterForm):
+  // Nombre/Edad/Hb hints mirror the create form (same copy, row-scoped
+  // ids). The row form is noValidate (Spanish-first, same decision as RegisterForm):
   // native min/max/step stay advisory and the submit validation owns every
   // message in Spanish. Hb is type=text + parseHemoglobina for the same
   // comma reason (type=number empties "11,5" before onChange fires).
   const nombreErrorId = `nombre-${paciente.id}-error`;
+  const nombreHintId = `nombre-${paciente.id}-hint`;
   const edadHintId = `edad-${paciente.id}-hint`;
   const edadErrorId = `edad-${paciente.id}-error`;
   const hbHintId = `hb-${paciente.id}-hint`;
@@ -1429,9 +1437,12 @@ function PadronEditRow({
                 if (dupWarning) setDupWarning(null);
               }}
               aria-invalid={nombreError ? true : undefined}
-              aria-describedby={nombreError ? nombreErrorId : undefined}
+              aria-describedby={nombreError ? `${nombreHintId} ${nombreErrorId}` : nombreHintId}
               className="mt-1"
             />
+            <FieldDescription id={nombreHintId}>
+              Nombre completo del paciente
+            </FieldDescription>
             {nombreError && (
               <FieldError id={nombreErrorId}>{nombreError}</FieldError>
             )}

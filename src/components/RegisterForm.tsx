@@ -128,8 +128,11 @@ export function RegisterForm() {
               if (nombreError) setNombreError(null);
             }}
             aria-invalid={nombreError ? true : undefined}
-            aria-describedby={nombreError ? "nombre-error" : undefined}
+            aria-describedby={nombreError ? "nombre-hint nombre-error" : "nombre-hint"}
           />
+          <FieldDescription id="nombre-hint">
+            Nombre completo del paciente
+          </FieldDescription>
           {nombreError && (
             <FieldError id="nombre-error">{nombreError}</FieldError>
           )}
@@ -225,7 +228,9 @@ export function RegisterForm() {
           both messages in DOM order (success first) serializes the
           announcement; the Descartar button stays outside the live region. */}
       {(lastRegistered || duplicateWarning) && (
-        <p role="status" className="text-sm">
+        // run-30 P3-1 (polish, cheap): scroll-mb keeps this receipt/warning
+        // clear of the sticky phone submit bar when scrolled into view.
+        <p role="status" className="text-sm scroll-mb-24">
           {lastRegistered && (
             <span className="block truncate text-success">
               Paciente registrado: {lastRegistered.nombre} —{" "}

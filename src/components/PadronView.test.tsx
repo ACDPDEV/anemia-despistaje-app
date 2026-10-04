@@ -100,7 +100,12 @@ describe("PadronView", () => {
     render(<PadronView onEmptyRegister={onEmptyRegister} />);
     expect(screen.getByText(/no hay pacientes registrados/i)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /registrar/i }));
+    // run-30 P3-2: visual copy unchanged; SR name disambiguates from the
+    // in-form submit.
+    const cta = screen.getByRole("button", { name: /registrar/i });
+    expect(cta).toHaveAttribute("aria-label", "Registrar paciente (ir a Registro)");
+    expect(cta).toHaveTextContent(/^registrar paciente$/i);
+    fireEvent.click(cta);
     expect(onEmptyRegister).toHaveBeenCalledTimes(1);
   });
 
@@ -334,7 +339,9 @@ describe("PadronView", () => {
       "La edad debe estar entre 6 y 59 meses.",
     );
     expect(nombre).not.toHaveAttribute("aria-invalid");
-    expect(nombre).not.toHaveAttribute("aria-describedby");
+    // run-30 P2: the valid nombre keeps its quiet hint wired (create-form
+    // parity), mirroring Edad/Hb.
+    expect(nombre.getAttribute("aria-describedby")).toMatch(/nombre-.*-hint/);
     expect(hb).not.toHaveAttribute("aria-invalid");
     // Hb mirrors the create form: the calm hint stays wired while valid.
     expect(hb.getAttribute("aria-describedby")).toMatch(/hb-.*-hint/);
@@ -347,10 +354,34 @@ describe("PadronView", () => {
     render(<PadronView />);
     const row = rowByName("Ana Torres");
     fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    expect(screen.getByText("Nombre completo del paciente")).toBeInTheDocument();
     expect(screen.getByText("6 a 59 meses")).toBeInTheDocument();
     expect(
       screen.getByText("Valor del hemoglobinómetro, ej. 11.5"),
     ).toBeInTheDocument();
+  });
+
+  it("wires the edit-row nombre hint and appends the error id when invalid (run-30 P2)", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    const nombre = screen.getByLabelText(/^nombre/i);
+    // Valid state: hint only.
+    expect(nombre.getAttribute("aria-describedby")).toMatch(/nombre-.*-hint/);
+    const hintId = nombre.getAttribute("aria-describedby")!;
+    expect(document.getElementById(hintId)).toHaveTextContent(
+      "Nombre completo del paciente",
+    );
+    // Invalid state: hint + error, error element carries the message.
+    fireEvent.change(nombre, { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    const describedBy = screen.getByLabelText(/^nombre/i).getAttribute("aria-describedby")!;
+    expect(describedBy).toMatch(/nombre-.*-hint/);
+    expect(describedBy).toMatch(/nombre-.*-error/);
+    expect(document.getElementById(describedBy.split(" ").at(-1)!)).toHaveTextContent(
+      "El nombre del paciente es obligatorio.",
+    );
   });
 
   it("builds the nombre filter on the Field system", () => {
