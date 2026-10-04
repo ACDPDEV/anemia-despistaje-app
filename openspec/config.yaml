@@ -1,0 +1,50 @@
+schema: spec-driven
+
+context: |
+  Tech stack: React 19 + Vite 7 + TypeScript 5.9 (strict) + Tailwind CSS v4 CSS-first + Zustand 5 + Supabase + Tauri.
+  Architecture: domain/ (anemia rules) + stores/ (Zustand padron store) + components/ (PadronView, RegisterForm, StatisticsView) + lib/ (supabase, sync).
+  Testing: Vitest 3.2 + jsdom + Testing Library; 7 test files, 32 tests green. No linter/formatter; tsc --noEmit is the type gate.
+  Style: artifacts English; UI strings Spanish; code identifiers/comments English.
+  Prior context (reference only, do NOT move): TAR repo openspec/changes/archive/2026-10-03-anemia-despistaje-app.
+  shadcn: official skill installed; Tailwind v4 compatible. No components.json yet; no cn() util yet; Recharts NOT installed.
+
+strict_tdd: true
+
+testing:
+  runner: "pnpm test (vitest run)"
+  framework: "Vitest 3.2 + jsdom + @testing-library/react + @testing-library/jest-dom"
+  layers:
+    unit: "vitest"
+    integration: "@testing-library/react"
+    e2e: null
+  coverage: null
+  typecheck: "tsc --noEmit (via pnpm build)"
+  linter: null
+  formatter: null
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Reference prior TAR archived change as context, never duplicate it here
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - UI copy Spanish, code identifiers English
+  design:
+    - Document architecture decisions with rationale
+    - Record shadcn setup decisions (components.json, cn() util, CSS-first tokens, chart library choice)
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing code patterns (domain/stores/components/lib split)
+      - Follow shadcn skill rules (semantic tokens, cn(), composition)
+    tdd: true
+    test_command: "pnpm test"
+  verify:
+    test_command: "pnpm test"
+    build_command: "pnpm build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

@@ -1,35 +1,165 @@
 import { useState } from "react";
 import { usePadronStore, type Paciente } from "../stores/padronStore";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import { DIAGNOSIS_BADGE } from "./DashboardView";
 
-// List + edit/delete view over the padron store selectors.
-export function PadronView() {
+const COLUMN_COUNT = 5;
+
+// Filterable register: shadcn Table + single Input filter over nombre.
+// Row edit/delete reuse the existing store update/remove selectors.
+export function PadronView({
+  onEmptyRegister,
+}: {
+  onEmptyRegister?: () => void;
+}) {
   const pacientes = usePadronStore((s) => s.pacientes);
+  const [filter, setFilter] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   if (pacientes.length === 0) {
     return (
-      <section>
+      <section className="flex flex-col gap-2">
         <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
-        <p className="mt-2 text-sm text-gray-600">No hay pacientes registrados.</p>
+        <p className="text-sm text-muted-foreground">
+          No hay pacientes registrados.
+        </p>
+        {onEmptyRegister ? (
+          <div>
+            <Button type="button" onClick={onEmptyRegister}>
+              Registrar paciente
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Use la pestaña Registro para agregar el primer paciente.
+          </p>
+        )}
       </section>
     );
   }
 
+  const normalized = filter.trim().toLowerCase();
+  const visible =
+    normalized.length === 0
+      ? pacientes
+      : pacientes.filter((p) => p.nombre.toLowerCase().includes(normalized));
+
   return (
-    <section>
+    <section className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
-      <ul className="mt-4 space-y-3">
-        {pacientes.map((p) => (
-          <PadronRow key={p.id} paciente={p} />
-        ))}
-      </ul>
+      <div>
+        <label
+          htmlFor="padron-filter"
+          className="block text-sm font-medium"
+        >
+          Buscar por nombre
+        </label>
+        <Input
+          id="padron-filter"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Buscar por nombre…"
+          className="mt-1"
+        />
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Nombre</TableHead>
+            <TableHead>Edad (meses)</TableHead>
+            <TableHead>Hemoglobina (g/dL)</TableHead>
+            <TableHead>Diagnóstico</TableHead>
+            <TableHead>
+              <span className="sr-only">Acciones</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visible.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={COLUMN_COUNT}>
+                Sin resultados para &ldquo;{filter.trim()}&rdquo;.
+              </TableCell>
+            </TableRow>
+          ) : (
+            visible.map((p) =>
+              p.id === editingId ? (
+                <PadronEditRow
+                  key={p.id}
+                  paciente={p}
+                  onDone={() => setEditingId(null)}
+                />
+              ) : (
+                <PadronRow
+                  key={p.id}
+                  paciente={p}
+                  onEdit={() => setEditingId(p.id)}
+                />
+              ),
+            )
+          )}
+        </TableBody>
+      </Table>
     </section>
   );
 }
 
-function PadronRow({ paciente }: { paciente: Paciente }) {
-  const update = usePadronStore((s) => s.update);
+function PadronRow({
+  paciente,
+  onEdit,
+}: {
+  paciente: Paciente;
+  onEdit: () => void;
+}) {
   const remove = usePadronStore((s) => s.remove);
-  const [editing, setEditing] = useState(false);
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{paciente.nombre}</TableCell>
+      <TableCell>{paciente.edadMeses}</TableCell>
+      <TableCell>{paciente.nivelHemoglobina}</TableCell>
+      <TableCell>
+        <Badge variant={DIAGNOSIS_BADGE[paciente.diagnostico]}>
+          {paciente.diagnostico}
+        </Badge>
+      </TableCell>
+      <TableCell>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+            Editar
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={() => remove(paciente.id)}
+          >
+            Eliminar
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function PadronEditRow({
+  paciente,
+  onDone,
+}: {
+  paciente: Paciente;
+  onDone: () => void;
+}) {
+  const update = usePadronStore((s) => s.update);
   const [nombre, setNombre] = useState(paciente.nombre);
   const [edad, setEdad] = useState(String(paciente.edadMeses));
   const [hb, setHb] = useState(String(paciente.nivelHemoglobina));
@@ -52,99 +182,80 @@ function PadronRow({ paciente }: { paciente: Paciente }) {
     }
     update(paciente.id, { nombre: nombre.trim(), edadMeses, nivelHemoglobina });
     setError(null);
-    setEditing(false);
+    onDone();
   }
 
   return (
-    <li className="rounded border p-3">
-      <p className="font-medium">{paciente.nombre}</p>
-      <p className="text-sm text-gray-600">
-        {paciente.edadMeses} meses · {paciente.nivelHemoglobina} g/dL ·{" "}
-        <span className="font-medium">{paciente.diagnostico}</span>
-      </p>
-      {!editing ? (
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setNombre(paciente.nombre);
-              setEdad(String(paciente.edadMeses));
-              setHb(String(paciente.nivelHemoglobina));
-              setError(null);
-              setEditing(true);
-            }}
-            className="rounded border px-3 py-1 text-sm"
-          >
-            Editar
-          </button>
-          <button
-            type="button"
-            onClick={() => remove(paciente.id)}
-            className="rounded border px-3 py-1 text-sm text-red-600"
-          >
-            Eliminar
-          </button>
-        </div>
-      ) : (
-        <div className="mt-2 space-y-2">
+    <TableRow>
+      <TableCell colSpan={COLUMN_COUNT}>
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium">
+            Editando a {paciente.nombre}
+          </p>
           <div>
-            <label htmlFor={`nombre-${paciente.id}`} className="block text-sm font-medium">
+            <label
+              htmlFor={`nombre-${paciente.id}`}
+              className="block text-sm font-medium"
+            >
               Nombre
             </label>
-            <input
+            <Input
               id={`nombre-${paciente.id}`}
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
-              className="mt-1 w-full rounded border px-3 py-1"
+              className="mt-1"
             />
           </div>
           <div>
-            <label htmlFor={`edad-${paciente.id}`} className="block text-sm font-medium">
+            <label
+              htmlFor={`edad-${paciente.id}`}
+              className="block text-sm font-medium"
+            >
               Edad (meses)
             </label>
-            <input
+            <Input
               id={`edad-${paciente.id}`}
               inputMode="numeric"
               value={edad}
               onChange={(e) => setEdad(e.target.value)}
-              className="mt-1 w-full rounded border px-3 py-1"
+              className="mt-1"
             />
           </div>
           <div>
-            <label htmlFor={`hb-${paciente.id}`} className="block text-sm font-medium">
+            <label
+              htmlFor={`hb-${paciente.id}`}
+              className="block text-sm font-medium"
+            >
               Hemoglobina (g/dL)
             </label>
-            <input
+            <Input
               id={`hb-${paciente.id}`}
               inputMode="decimal"
               value={hb}
               onChange={(e) => setHb(e.target.value)}
-              className="mt-1 w-full rounded border px-3 py-1"
+              className="mt-1"
             />
           </div>
           {error && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-sm text-destructive">
               {error}
             </p>
           )}
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              className="rounded bg-blue-600 px-3 py-1 text-sm text-white"
-            >
+            <Button type="button" size="sm" onClick={handleSave}>
               Guardar
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              onClick={() => setEditing(false)}
-              className="rounded border px-3 py-1 text-sm"
+              variant="outline"
+              size="sm"
+              onClick={onDone}
             >
               Cancelar
-            </button>
+            </Button>
           </div>
         </div>
-      )}
-    </li>
+      </TableCell>
+    </TableRow>
   );
 }

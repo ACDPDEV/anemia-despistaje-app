@@ -1,0 +1,19 @@
+change: anemia-dashboard
+status: proposed
+created: 2026-10-04
+source: sdd-init
+prior_context: /home/orion/Documents/UNT/C2/SOCUEC/U1/S5/TAR/openspec/changes/archive/2026-10-03-anemia-despistaje-app (reference only)
+scope:
+  - shadcn migration (components.json init, cn() util, CSS-first tokens)
+  - dashboard (KPI cards, Hb distribution chart, risk-by-age, filterable padron table)
+  - Spanish UI, English code
+next_phase: sdd-explore
+phases:
+  explore: pending
+  propose: pending
+  spec: pending
+  design: pending
+  tasks: pending
+  apply: pending
+  verify: pending
+  archive: pending
