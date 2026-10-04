@@ -660,6 +660,69 @@ describe("SyncStatusChip", () => {
   });
 });
 
+describe("collapsed receipt on demand (run-29 P3-1)", () => {
+  it("exposes the receipt through aria-describedby, never the live name", () => {
+    render(<SyncStatusChip collapsed />);
+    const chip = screen.getByTestId("sync-status-chip");
+    const status = within(chip).getByRole("status");
+    // Description hook, not the label: queried on demand, never announced.
+    expect(status.getAttribute("aria-describedby")).toBe(
+      "sync-receipt-collapsed",
+    );
+    const receiptEl = document.getElementById("sync-receipt-collapsed")!;
+    expect(receiptEl).toBeInTheDocument();
+    expect(receiptEl).toHaveTextContent("Aún sin sincronizar");
+    // Outside the live region with no live role of its own: receipt ticks
+    // must never announce.
+    expect(receiptEl.closest('[role="status"]')).toBeNull();
+    expect(receiptEl).not.toHaveAttribute("role");
+    expect(receiptEl).not.toHaveAttribute("aria-live");
+    expect(receiptEl.className).toMatch(/sr-only/);
+    // The live name stays static: status text only, no receipt.
+    expect(status.getAttribute("aria-label")).toBe("A salvo en este equipo");
+  });
+
+  it("describes the collapsed action with the same receipt element", () => {
+    seedDirty();
+    render(<SyncStatusChip collapsed />);
+
+    const action = screen.getByRole("button", { name: /^sincronizar$/i });
+    expect(action.getAttribute("aria-describedby")).toBe(
+      "sync-receipt-collapsed",
+    );
+    expect(
+      document.getElementById("sync-receipt-collapsed"),
+    ).toHaveTextContent("Aún sin sincronizar");
+  });
+
+  it("updates the described receipt across ticks without renaming (no churn)", () => {
+    vi.useFakeTimers();
+    try {
+      guard.recordPull(Date.now());
+      render(<SyncStatusChip collapsed />);
+      const chip = screen.getByTestId("sync-status-chip");
+      const status = within(chip).getByRole("status");
+      const before = status.getAttribute("aria-label")!;
+      expect(before).toBe("A salvo en este equipo");
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      const receiptEl = document.getElementById(
+        within(chip).getByRole("status").getAttribute("aria-describedby")!,
+      )!;
+      expect(receiptEl).toHaveTextContent(
+        /última sincronización hace 5s/i,
+      );
+      // The live name never moves with the ticks.
+      expect(
+        within(chip).getByRole("status").getAttribute("aria-label"),
+      ).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("shared module sync error (run-24 P2-2)", () => {
   it("shows a failure from one surface on the other with the identical string", async () => {
     seedDirty();

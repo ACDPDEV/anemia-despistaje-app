@@ -17,7 +17,9 @@ function fillAndSubmit(nombre: string, edad: string, hb: string) {
   fireEvent.change(screen.getByLabelText(/nombre/i), { target: { value: nombre } });
   fireEvent.change(screen.getByLabelText(/edad/i), { target: { value: edad } });
   fireEvent.change(screen.getByLabelText(/hemoglobina/i), { target: { value: hb } });
-  fireEvent.click(screen.getByRole("button", { name: /registrar/i }));
+  // Two submit affordances share this form (primary + phone bar): pin the
+  // primary by testid so the helper never ambiguates.
+  fireEvent.click(screen.getByTestId("register-submit"));
 }
 
 describe("RegisterForm", () => {
@@ -70,7 +72,7 @@ describe("RegisterForm", () => {
     fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
       target: { value: "12.0" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /registrar/i }));
+    fireEvent.click(screen.getByTestId("register-submit"));
     expect(screen.getByRole("alert")).toHaveTextContent(
       "La edad debe estar entre 6 y 59 meses.",
     );
@@ -85,7 +87,7 @@ describe("RegisterForm", () => {
     fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
       target: { value: "0" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /registrar/i }));
+    fireEvent.click(screen.getByTestId("register-submit"));
     expect(screen.getByRole("alert")).toHaveTextContent(/mayor que 0/);
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
@@ -272,9 +274,9 @@ describe("RegisterForm", () => {
 
   it("exposes the Alt+S shortcut on the submit button", () => {
     render(<RegisterForm />);
-    expect(
-      screen.getByRole("button", { name: /^registrar paciente$/i }),
-    ).toHaveAttribute("aria-keyshortcuts", "Alt+S");
+    const submit = screen.getByTestId("register-submit");
+    expect(submit).toHaveAttribute("aria-keyshortcuts", "Alt+S");
+    expect(submit).toHaveTextContent(/^registrar paciente$/i);
   });
 
   it("announces the duplicate warning as a non-interrupting status", () => {
@@ -533,5 +535,79 @@ describe("RegisterForm phone sync row (run-24 P2-1)", () => {
     } finally {
       setOnline(true);
     }
+  });
+});
+
+describe("RegisterForm phone submit bar (run-29 P2-1)", () => {
+  function fillValid() {
+    fireEvent.change(screen.getByLabelText(/nombre/i), {
+      target: { value: "Ana Torres" },
+    });
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "24" },
+    });
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: "12.0" },
+    });
+  }
+
+  it("renders a phone-only sticky thumb-zone bar with a second submit", () => {
+    render(<RegisterForm />);
+    const bar = screen.getByTestId("register-submit-bar");
+    // Phone surface only (same CSS contract as the phone sync row): off
+    // desktop, off paper. sticky (not fixed) so it rides along only while
+    // the form is on screen.
+    expect(bar.className).toMatch(/sm:hidden/);
+    expect(bar.className).toMatch(/print:hidden/);
+    expect(bar.className).toMatch(/sticky/);
+    // Quiet Card surface: top border separation, no shadow, no live region.
+    expect(bar.className).toMatch(/border-t/);
+    expect(bar.className).toMatch(/bg-card/);
+    expect(within(bar).queryByRole("status")).not.toBeInTheDocument();
+    expect(within(bar).queryByRole("alert")).not.toBeInTheDocument();
+    const phone = screen.getByTestId("register-submit-phone");
+    expect(phone).toHaveAttribute("type", "submit");
+    expect(phone).toHaveTextContent(/^registrar$/i);
+    expect(phone.className).toMatch(/min-h-11/);
+    expect(phone.className).toMatch(/w-full/);
+    // Same shortcut grammar as the primary (shared Alt+S mechanism).
+    expect(phone).toHaveAttribute("aria-keyshortcuts", "Alt+S");
+  });
+
+  it("submits the form through the phone button with identical guards", () => {
+    render(<RegisterForm />);
+    fillValid();
+    fireEvent.click(screen.getByTestId("register-submit-phone"));
+
+    const { pacientes } = usePadronStore.getState();
+    expect(pacientes).toHaveLength(1);
+    expect(pacientes[0].nombre).toBe("Ana Torres");
+    expect(screen.getByText(/paciente registrado/i)).toBeInTheDocument();
+  });
+
+  it("rejects invalid data through the phone button with Spanish messages", () => {
+    render(<RegisterForm />);
+    fireEvent.change(screen.getByLabelText(/nombre/i), {
+      target: { value: "   " },
+    });
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "24" },
+    });
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: "12.0" },
+    });
+    fireEvent.click(screen.getByTestId("register-submit-phone"));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/nombre/i);
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
+  });
+
+  it("keeps both submits inside the same form (one submit mechanism)", () => {
+    render(<RegisterForm />);
+    const form = document.getElementById("register-form")!;
+    expect(form).toContainElement(screen.getByTestId("register-submit"));
+    expect(form).toContainElement(
+      screen.getByTestId("register-submit-phone"),
+    );
   });
 });

@@ -804,7 +804,9 @@ export function PadronView({
           row-level dirty/conflict semantics (each edit revalidates and
           stamps its own updatedAt for the push/pull merge); a bulk editor
           would need per-row conflict surfacing first. Revisit if jornada
-          volume demands it. */}
+          volume demands it. Trigger: a field report of ≥3 requests for
+          batch-correction OR observed pattern of identical Hb corrections
+          across rows in one jornada. */}
       {selectedVisible.length > 0 ? (
         <div
           className="flex flex-wrap items-center gap-2"

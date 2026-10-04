@@ -348,6 +348,14 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   // action button gives a non-text failure signal without layout shift;
   // the expanded/mobile error line keeps the single role="alert" so the
   // collapsed name never double-announces.
+  // run-29 P3-1 (harden): the receipt also lives on demand for screen
+  // readers via aria-describedby on the status AND on the icon action
+  // (when rendered), pointing at a visually-hidden sibling span. A
+  // description is queried on demand — it never auto-announces — so the
+  // 5s/30s receipt ticks cause no re-announce churn, and the live name
+  // above stays static. The span sits OUTSIDE the role="status" live
+  // region (a text change inside it would announce); it carries no live
+  // role of its own.
   if (collapsed) {
     const Icon = !online ? CloudOff : syncing ? RefreshCw : Cloud;
     const collapsedName =
@@ -358,7 +366,12 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
         title={title}
         className="flex flex-col items-center gap-1 py-1"
       >
-        <span className="relative inline-flex" role="status" aria-label={collapsedName}>
+        <span
+          className="relative inline-flex"
+          role="status"
+          aria-label={collapsedName}
+          aria-describedby="sync-receipt-collapsed"
+        >
           <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
           {pending > 0 && (
             <span
@@ -370,6 +383,9 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
             </span>
           )}
         </span>
+        <span id="sync-receipt-collapsed" className="sr-only">
+          {receipt}
+        </span>
         {showAction && (
           <span className="relative inline-flex">
             <Button
@@ -380,6 +396,7 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
               className="pointer-coarse:min-h-11"
               disabled={syncing}
               aria-label={buttonLabel}
+              aria-describedby="sync-receipt-collapsed"
               aria-keyshortcuts="Alt+G"
               title={`${buttonLabel} (Alt+G) · ${text}`}
               onClick={() => void handleSync()}

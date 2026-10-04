@@ -47,7 +47,9 @@ function registerPatient(
   fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
     target: { value: hb },
   });
-  fireEvent.click(screen.getByRole("button", { name: /registrar/i }));
+  // Two submit affordances share the register form (primary + phone bar):
+  // pin the primary by testid so the helper never ambiguates.
+  fireEvent.click(screen.getByTestId("register-submit"));
 }
 
 beforeEach(() => {
@@ -139,6 +141,27 @@ describe("App sidebar shell", () => {
     expect(screen.getByTestId("kpi-total")).toHaveTextContent("1");
     // One-decimal Hb voice shared with print and CSV (formatHb).
     expect(screen.getByTestId("kpi-avg")).toHaveTextContent("12.0 g/dL");
+  });
+
+  it("shows the phone submit bar on Registro only, never on Padrón/Panel (run-29 P2-1)", () => {
+    render(<App />);
+    const nav = screen.getByRole("navigation");
+
+    // Registro tab: the bar rides inside the register form.
+    expect(screen.getByTestId("register-submit-bar")).toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("button", { name: /padrón/i }));
+    expect(
+      screen.queryByTestId("register-submit-bar"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("button", { name: /panel/i }));
+    expect(
+      screen.queryByTestId("register-submit-bar"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("button", { name: /registro/i }));
+    expect(screen.getByTestId("register-submit-bar")).toBeInTheDocument();
   });
 
   it("navigates back to registro from the empty padron call-to-action", () => {

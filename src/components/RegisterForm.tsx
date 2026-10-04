@@ -197,7 +197,10 @@ export function RegisterForm() {
               small so it never competes with the form; outside the
               hb-hint description so screen readers meet it as its own
               disclosure, not as field hint noise on every Hb focus. The
-              full cue sentence stays verbatim in the disclosure body. */}
+              full cue sentence stays verbatim in the disclosure body.
+              run-29 P3-2 (polish, accepted): the cue may wrap to two lines
+              below ~320px — accepted pending a field report; never
+              truncated (truncation would hide the triage). */}
           <details
             data-testid="register-help"
             className="text-xs text-muted-foreground"
@@ -249,12 +252,40 @@ export function RegisterForm() {
       )}
       <Button
         type="submit"
+        data-testid="register-submit"
         aria-keyshortcuts="Alt+S"
         title="Registrar paciente (Alt+S)"
       >
         Registrar paciente
       </Button>
       </FieldGroup>
+      {/* Phone-only thumb-zone submit (run-29 P2-1, adapt): Alt+1/2/3/S/G
+          are desktop-only, so the field nurse on a phone gets the same
+          submit in thumb reach. INSIDE the form as a second type="submit":
+          native submit runs the identical handleSubmit guards (Spanish
+          validation, 100-cap, warning-only duplicate flow) — no second
+          behavior, focus/dirty/duplicate flows untouched. sticky (not
+          fixed) so it only rides along while the form is on screen;
+          sm:hidden keeps it off desktop where the primary button + Alt+S
+          own the action; print:hidden keeps it off paper. Registro-only
+          by construction (this component mounts on the Registro tab
+          alone). Quiet Card surface (border-top, bg-card, no shadow, no
+          live region — nothing to double-announce): the short "Registrar"
+          label is the small-screen form of the primary action. */}
+      <div
+        data-testid="register-submit-bar"
+        className="sticky bottom-0 border-t border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:hidden print:hidden"
+      >
+        <Button
+          type="submit"
+          data-testid="register-submit-phone"
+          aria-keyshortcuts="Alt+S"
+          title="Registrar paciente (Alt+S)"
+          className="min-h-11 w-full"
+        >
+          Registrar
+        </Button>
+      </div>
     </form>
   );
 }
