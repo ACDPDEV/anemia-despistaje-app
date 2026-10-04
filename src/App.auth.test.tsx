@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { usePadronStore } from "./stores/padronStore";
 import App from "./App";
 import * as auth from "./lib/auth";
@@ -69,5 +69,27 @@ describe("App auth gating", () => {
       expect(screen.getByRole("navigation")).toBeInTheDocument(),
     );
     expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
+  });
+
+  it("signs out from the sidebar Cerrar sesión button", async () => {
+    mockedAuth.isAuthConfigured.mockReturnValue(true);
+    mockedAuth.getSession.mockResolvedValue({
+      access_token: "tok",
+    } as never);
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole("navigation")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /cerrar sesión/i }));
+    expect(mockedAuth.signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides Cerrar sesión when auth is not configured", () => {
+    mockedAuth.isAuthConfigured.mockReturnValue(false);
+    render(<App />);
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /cerrar sesión/i }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -259,6 +259,9 @@ export function DashboardView() {
           <Card>
         <CardHeader>
           <CardTitle>Distribución de hemoglobina</CardTitle>
+          <CardDescription>
+            El color indica la gravedad del diagnóstico
+          </CardDescription>
         </CardHeader>
         <CardContent className="min-w-0">
           <div data-testid="hb-chart" className="h-[220px] w-full min-w-0">

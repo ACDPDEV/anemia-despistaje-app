@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { findPossibleDuplicates, usePadronStore } from "../stores/padronStore";
-import type { Diagnosis } from "../domain/anemia";
+import { HB_CUTOFF_LABEL, type Diagnosis } from "../domain/anemia";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -120,7 +120,10 @@ export function RegisterForm() {
             aria-describedby={hbError ? "hb-hint hb-error" : "hb-hint"}
           />
           <FieldDescription id="hb-hint">
-            Valor del hemoglobinómetro, ej. 11.5
+            <span className="block">Valor del hemoglobinómetro, ej. 11.5</span>
+            <span className="block" data-testid="hb-cutoffs">
+              {HB_CUTOFF_LABEL}
+            </span>
           </FieldDescription>
           {hbError && <FieldError id="hb-error">{hbError}</FieldError>}
         </Field>
@@ -135,8 +138,10 @@ export function RegisterForm() {
         </p>
       )}
       {duplicateWarning && (
-        <div role="status" className="flex items-center gap-2">
-          <p className="text-sm text-warning">{duplicateWarning}</p>
+        <div className="flex items-center gap-2">
+          <p role="status" className="text-sm text-warning">
+            {duplicateWarning}
+          </p>
           <Button
             type="button"
             variant="outline"

@@ -10,7 +10,7 @@ import { buildPadronCsv, padronFilename } from "../lib/padronExport";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
-import { Field, FieldError, FieldLabel } from "./ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import {
   Table,
@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "./ui/table";
 import { DIAGNOSIS_BADGE } from "./DashboardView";
+import { HB_CUTOFF_LABEL } from "../domain/anemia";
 
 const COLUMN_COUNT = 5;
 
@@ -372,8 +373,11 @@ function PadronEditRow({
 
   // Per-field validation mirrors RegisterForm: same clinical copy, each
   // Input pointing at its own error id, invalid flag only on offenders.
+  // Edad/Hb hints mirror the create form (same copy, row-scoped ids).
   const nombreErrorId = `nombre-${paciente.id}-error`;
+  const edadHintId = `edad-${paciente.id}-hint`;
   const edadErrorId = `edad-${paciente.id}-error`;
+  const hbHintId = `hb-${paciente.id}-hint`;
   const hbErrorId = `hb-${paciente.id}-error`;
 
   function handleSave() {
@@ -437,9 +441,10 @@ function PadronEditRow({
                 if (edadError) setEdadError(null);
               }}
               aria-invalid={edadError ? true : undefined}
-              aria-describedby={edadError ? edadErrorId : undefined}
+              aria-describedby={edadError ? `${edadHintId} ${edadErrorId}` : edadHintId}
               className="mt-1"
             />
+            <FieldDescription id={edadHintId}>6 a 59 meses</FieldDescription>
             {edadError && <FieldError id={edadErrorId}>{edadError}</FieldError>}
           </Field>
           <Field data-invalid={hbError ? true : undefined}>
@@ -455,9 +460,13 @@ function PadronEditRow({
                 if (hbError) setHbError(null);
               }}
               aria-invalid={hbError ? true : undefined}
-              aria-describedby={hbError ? hbErrorId : undefined}
+              aria-describedby={hbError ? `${hbHintId} ${hbErrorId}` : hbHintId}
               className="mt-1"
             />
+            <FieldDescription id={hbHintId}>
+              <span className="block">Valor del hemoglobinómetro, ej. 11.5</span>
+              <span className="block">{HB_CUTOFF_LABEL}</span>
+            </FieldDescription>
             {hbError && <FieldError id={hbErrorId}>{hbError}</FieldError>}
           </Field>
           <div className="flex gap-2">

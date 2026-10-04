@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
+import { HB_CUTOFF_LABEL } from "../domain/anemia";
 import { RegisterForm } from "./RegisterForm";
 
 beforeEach(() => {
@@ -157,5 +158,28 @@ describe("RegisterForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /descartar/i }));
     expect(screen.queryByText(/posible duplicado/i)).not.toBeInTheDocument();
     expect(usePadronStore.getState().pacientes).toHaveLength(2);
+  });
+
+  it("keeps the Descartar button outside the warning live region", () => {
+    usePadronStore
+      .getState()
+      .add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
+    render(<RegisterForm />);
+    fillAndSubmit("maria lopez", "24", "12.0");
+
+    const warning = screen.getByText(/posible duplicado/i);
+    const liveRegion = warning.closest('[role="status"]')!;
+    expect(liveRegion.tagName).toBe("P");
+    // No interactive content inside the live region.
+    expect(liveRegion.querySelector("button")).toBeNull();
+    const dismiss = screen.getByRole("button", { name: /descartar/i });
+    expect(liveRegion.contains(dismiss)).toBe(false);
+  });
+
+  it("surfaces the Hb cutoffs from the shared clinical source", () => {
+    render(<RegisterForm />);
+    // Real values, never retyped: the hint quotes the domain label.
+    expect(screen.getByTestId("hb-cutoffs")).toHaveTextContent(HB_CUTOFF_LABEL);
+    expect(HB_CUTOFF_LABEL).toMatch(/11/);
   });
 });

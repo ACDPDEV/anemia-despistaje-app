@@ -271,6 +271,19 @@ describe("DashboardView", () => {
     expect(screen.getByTestId("empty-guide")).toBeInTheDocument();
   });
 
+  it("keys the Hb chart like the age chart", () => {
+    seedPadron();
+    render(<DashboardView />);
+    const card = screen.getByText("Distribución de hemoglobina").closest(
+      "div[data-slot='card']",
+    )!;
+    expect(
+      within(card as HTMLElement).getByText(
+        /el color indica la gravedad del diagnóstico/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("shows no empty guide once the padron has records", () => {
     seedPadron();
     render(<DashboardView />);

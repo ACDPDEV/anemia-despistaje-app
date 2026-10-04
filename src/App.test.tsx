@@ -177,4 +177,30 @@ describe("App sidebar shell", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("keeps a single full title in the page h1 with a compact sidebar wordmark", () => {
+    render(<App />);
+    const headings = screen.getAllByRole("heading", { name: /despistaje/i });
+    // The page h1 owns the full title; the sidebar keeps a short wordmark.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Despistaje de Anemia",
+    );
+    expect(headings.filter((h) => h.textContent === "Despistaje de Anemia"))
+      .toHaveLength(1);
+  });
+
+  it("answers safety from the shell footer when the padron is clean", () => {
+    render(<App />);
+    expect(screen.getByTestId("sync-status-chip")).toHaveTextContent(
+      "A salvo en este equipo",
+    );
+  });
+
+  it("counts unsynced registrations in the shell chip", () => {
+    render(<App />);
+    registerPatient();
+    expect(screen.getByTestId("sync-status-chip")).toHaveTextContent(
+      "1 por sincronizar",
+    );
+  });
 });

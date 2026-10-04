@@ -274,16 +274,29 @@ describe("PadronView", () => {
     const hb = screen.getByLabelText(/hemoglobina/i);
     expect(edad).toHaveAttribute("aria-invalid", "true");
     const describedBy = edad.getAttribute("aria-describedby")!;
+    expect(describedBy).toMatch(/edad-.*-hint/);
     expect(describedBy).toMatch(/edad-.*-error/);
-    expect(document.getElementById(describedBy)).toHaveTextContent(
+    expect(document.getElementById(describedBy.split(" ").at(-1)!)).toHaveTextContent(
       "La edad debe estar entre 6 y 59 meses.",
     );
     expect(nombre).not.toHaveAttribute("aria-invalid");
     expect(nombre).not.toHaveAttribute("aria-describedby");
     expect(hb).not.toHaveAttribute("aria-invalid");
-    expect(hb).not.toHaveAttribute("aria-describedby");
+    // Hb mirrors the create form: the calm hint stays wired while valid.
+    expect(hb.getAttribute("aria-describedby")).toMatch(/hb-.*-hint/);
     // No edit happens while invalid.
     expect(usePadronStore.getState().pacientes[0].edadMeses).toBe(24);
+  });
+
+  it("mirrors the create-form Edad/Hb hints in the edit row", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    expect(screen.getByText("6 a 59 meses")).toBeInTheDocument();
+    expect(
+      screen.getByText("Valor del hemoglobinómetro, ej. 11.5"),
+    ).toBeInTheDocument();
   });
 
   it("matches accented names from an unaccented filter", () => {

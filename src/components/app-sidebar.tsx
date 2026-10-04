@@ -1,8 +1,11 @@
-import { ClipboardList, LayoutDashboard, Users, type LucideIcon } from "lucide-react";
+import { ClipboardList, LayoutDashboard, LogOut, Users, type LucideIcon } from "lucide-react";
 import { useSidebar } from "./ui/sidebar";
+import { isAuthConfigured, signOut } from "../lib/auth";
+import { SyncStatusChip } from "./SyncStatusChip";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -32,8 +35,12 @@ type AppSidebarProps = {
 };
 
 // Sole navigation control. Active state derives from the single TabId source.
+// The header keeps a compact wordmark (the page h1 owns the full title).
+// The footer answers safety: sync/offline status chip plus logout when
+// auth is configured (offline-first local mode shows no logout).
 export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
   const { setOpenMobile } = useSidebar();
+  const authConfigured = isAuthConfigured();
 
   const handleNavigate = (id: TabId) => {
     onNavigate(id);
@@ -44,7 +51,7 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <span className="truncate px-2 text-sm font-semibold">
-          Despistaje de Anemia
+          Despistaje
         </span>
       </SidebarHeader>
       <SidebarContent>
@@ -71,6 +78,22 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SyncStatusChip />
+        {authConfigured && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Cerrar sesión"
+                onClick={() => void signOut()}
+              >
+                <LogOut />
+                <span>Cerrar sesión</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
+      </SidebarFooter>
     </Sidebar>
   );
 }
