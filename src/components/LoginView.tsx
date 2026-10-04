@@ -1,12 +1,17 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useOnline } from "../hooks/useOnline";
 import {
+  requestPasswordReset,
   signInWithPassword,
   signUp,
 } from "../lib/auth";
-import { toSpanishErrorMessage } from "../lib/errorMessages";
+import {
+  OFFLINE_RETRY_MESSAGE,
+  toSpanishErrorMessage,
+} from "../lib/errorMessages";
 
 // Login + sign-up form with Spanish labels. Sign-up with email confirmation
 // enabled replaces the form with a success notice; without confirmation the
@@ -14,28 +19,87 @@ import { toSpanishErrorMessage } from "../lib/errorMessages";
 // No unconfigured/offline branch (run-17 P3-2): App.tsx only mounts this
 // view inside `if (authConfigured && !session)`, so isAuthConfigured() is
 // always true here and that branch could never render — deleted, not kept.
+// Offline is notice-only (run-30 P3): sign-in still requires connection, so
+// there is no bypass and the gate stays; the notice only makes the doomed
+// network call unsurprising. Recovery mail goes through Supabase
+// resetPasswordForEmail with the app origin as redirect (that origin must
+// be allowlisted in the Supabase dashboard redirect URLs).
+const EMAIL_REQUIRED_MESSAGE = "El correo electrónico es obligatorio.";
+const EMAIL_FORMAT_MESSAGE = "Escribe un correo electrónico válido.";
+const PASSWORD_REQUIRED_MESSAGE = "La contraseña es obligatoria.";
+const RESET_SEND_FAILED_MESSAGE = "No se pudo enviar el enlace de recuperación.";
+const RESET_SENT_MESSAGE =
+  "Revisa tu correo. Te enviamos un enlace para restablecer tu contraseña.";
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function emailFieldError(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return EMAIL_REQUIRED_MESSAGE;
+  if (!EMAIL_PATTERN.test(trimmed)) return EMAIL_FORMAT_MESSAGE;
+  return null;
+}
+
+// Login form component (sign-in, sign-up, and password recovery).
 export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
+  const online = useOnline();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   // Empty fields flag only their own Input; auth failures (wrong
   // credentials, existing account) stay a form-level alert so no field
-  // is marked invalid for a server-side outcome.
+  // is marked invalid for a server-side outcome. Format errors are
+  // client-side and DO own the email field (blur/submit, before any
+  // network call).
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
+  // Forgotten-password sub-view (sign-in only): replaces the form, then a
+  // confirmation notice on success. No bypass — it only sends the mail.
+  const [showReset, setShowReset] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetPending, setResetPending] = useState(false);
+
+  const emailRef = useRef<HTMLInputElement | null>(null);
+  const formAlertRef = useRef<HTMLParagraphElement | null>(null);
+  const confirmationRef = useRef<HTMLParagraphElement | null>(null);
+  const resetConfirmationRef = useRef<HTMLParagraphElement | null>(null);
+  const mounted = useRef(false);
+
+  // Focus management (run-30 P2-b): view switches land on the email field,
+  // the confirmation notice and the form-level alert take focus when they
+  // appear so screen readers announce them. Field focus is never pinned by
+  // tests, so the alert owns focus on auth failure.
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    if (confirmationSent || resetSent) return;
+    emailRef.current?.focus();
+  }, [mode, showReset, confirmationSent, resetSent]);
+  useEffect(() => {
+    if (formError) formAlertRef.current?.focus();
+  }, [formError]);
+  useEffect(() => {
+    if (confirmationSent) confirmationRef.current?.focus();
+  }, [confirmationSent]);
+  useEffect(() => {
+    if (resetSent) resetConfirmationRef.current?.focus();
+  }, [resetSent]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (pending) return;
-    // Per-field required check: the shared sentence is split so each
-    // empty Input carries its own id, message, and invalid flag.
-    const nextEmailError =
-      email.trim().length === 0 ? "El correo electrónico es obligatorio." : null;
+    // Per-field check BEFORE any network call: the shared sentence is
+    // split so each empty Input carries its own id, message, and invalid
+    // flag, and a malformed email never reaches Supabase.
+    const nextEmailError = emailFieldError(email);
     const nextPasswordError =
-      password.length === 0 ? "La contraseña es obligatoria." : null;
+      password.length === 0 ? PASSWORD_REQUIRED_MESSAGE : null;
     setEmailError(nextEmailError);
     setPasswordError(nextPasswordError);
     if (nextEmailError || nextPasswordError) return;
@@ -66,21 +130,71 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
     }
   }
 
+  async function handleResetSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (resetPending) return;
+    const nextEmailError = emailFieldError(email);
+    setEmailError(nextEmailError);
+    if (nextEmailError) return;
+    setResetPending(true);
+    setFormError(null);
+    try {
+      await requestPasswordReset(email.trim());
+      setResetSent(true);
+    } catch (err) {
+      setFormError(
+        err instanceof Error
+          ? toSpanishErrorMessage(err.message)
+          : RESET_SEND_FAILED_MESSAGE,
+      );
+    } finally {
+      setResetPending(false);
+    }
+  }
+
   function switchMode(next: "signin" | "signup") {
     setMode(next);
     setEmailError(null);
     setPasswordError(null);
     setFormError(null);
     setConfirmationSent(false);
+    setShowPassword(false);
+  }
+
+  function openReset() {
+    setShowReset(true);
+    setEmailError(null);
+    setFormError(null);
+  }
+
+  function closeReset() {
+    setShowReset(false);
+    setResetSent(false);
+    setEmailError(null);
+    setFormError(null);
   }
 
   const busy = pending;
   const isSignup = mode === "signup";
 
+  // Proactive offline notice (run-30 P3): honest, visible, no bypass — the
+  // submit behavior underneath is unchanged.
+  const offlineNotice = !online ? (
+    <p role="status" className="text-sm text-muted-foreground">
+      {OFFLINE_RETRY_MESSAGE}
+    </p>
+  ) : null;
+
+  const formAlert = formError ? (
+    <p ref={formAlertRef} tabIndex={-1} role="alert" className="text-sm text-destructive">
+      {formError}
+    </p>
+  ) : null;
+
   if (confirmationSent) {
     return (
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">
+        <p ref={confirmationRef} tabIndex={-1} role="status" className="text-sm text-muted-foreground">
           Cuenta creada. Revisa tu correo para confirmar tu cuenta.
         </p>
         <Button
@@ -94,12 +208,82 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
     );
   }
 
+  if (showReset) {
+    if (resetSent) {
+      return (
+        <div className="flex flex-col gap-4">
+          <p ref={resetConfirmationRef} tabIndex={-1} role="status" className="text-sm text-muted-foreground">
+            {RESET_SENT_MESSAGE}
+          </p>
+          <Button type="button" variant="link" onClick={closeReset}>
+            Volver a iniciar sesión
+          </Button>
+        </div>
+      );
+    }
+    return (
+      // noValidate (Spanish-first, same decision as RegisterForm): native
+      // bubbles speak the browser's language, so every value reaches the
+      // React handler and the inline Spanish check answers first.
+      <form onSubmit={handleResetSubmit} noValidate>
+        <FieldGroup>
+          {offlineNotice}
+          <Field data-invalid={emailError ? true : undefined}>
+            <FieldLabel htmlFor="login-email">Correo electrónico</FieldLabel>
+            <Input
+              ref={emailRef}
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (emailError) setEmailError(null);
+              }}
+              onBlur={() => {
+                // Blur-time format nag only: empty stays a submit-time
+                // concern, a filled malformed value flags immediately.
+                const trimmed = email.trim();
+                if (trimmed.length === 0) return;
+                setEmailError(
+                  EMAIL_PATTERN.test(trimmed) ? null : EMAIL_FORMAT_MESSAGE,
+                );
+              }}
+              aria-invalid={emailError ? true : undefined}
+              aria-describedby={emailError ? "login-email-error" : undefined}
+            />
+            {emailError && (
+              <FieldError id="login-email-error">{emailError}</FieldError>
+            )}
+          </Field>
+          {formAlert}
+          <Button type="submit" disabled={resetPending}>
+            {resetPending ? "Enviando enlace…" : "Enviar enlace de recuperación"}
+          </Button>
+          <Button
+            type="button"
+            variant="link"
+            disabled={resetPending}
+            onClick={closeReset}
+          >
+            Volver a iniciar sesión
+          </Button>
+        </FieldGroup>
+      </form>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit}>
+    // noValidate (Spanish-first, same decision as RegisterForm): native
+    // bubbles speak the browser's language, so every value reaches the
+    // React handler and the inline Spanish check answers first.
+    <form onSubmit={handleSubmit} noValidate>
       <FieldGroup>
+        {offlineNotice}
         <Field data-invalid={emailError ? true : undefined}>
           <FieldLabel htmlFor="login-email">Correo electrónico</FieldLabel>
           <Input
+            ref={emailRef}
             id="login-email"
             type="email"
             autoComplete="email"
@@ -107,6 +291,15 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
             onChange={(e) => {
               setEmail(e.target.value);
               if (emailError) setEmailError(null);
+            }}
+            onBlur={() => {
+              // Blur-time format nag only: empty stays a submit-time
+              // concern, a filled malformed value flags immediately.
+              const trimmed = email.trim();
+              if (trimmed.length === 0) return;
+              setEmailError(
+                EMAIL_PATTERN.test(trimmed) ? null : EMAIL_FORMAT_MESSAGE,
+              );
             }}
             aria-invalid={emailError ? true : undefined}
             aria-describedby={emailError ? "login-email-error" : undefined}
@@ -117,27 +310,38 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
         </Field>
         <Field data-invalid={passwordError ? true : undefined}>
           <FieldLabel htmlFor="login-password">Contraseña</FieldLabel>
-          <Input
-            id="login-password"
-            type="password"
-            autoComplete={isSignup ? "new-password" : "current-password"}
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              if (passwordError) setPasswordError(null);
-            }}
-            aria-invalid={passwordError ? true : undefined}
-            aria-describedby={passwordError ? "login-password-error" : undefined}
-          />
+          {/* Absolute toggle: showing/hiding never moves siblings. */}
+          <div className="relative">
+            <Input
+              id="login-password"
+              type={showPassword ? "text" : "password"}
+              autoComplete={isSignup ? "new-password" : "current-password"}
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (passwordError) setPasswordError(null);
+              }}
+              aria-invalid={passwordError ? true : undefined}
+              aria-describedby={passwordError ? "login-password-error" : undefined}
+              className="pr-24"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute top-1/2 right-1 min-h-11 -translate-y-1/2"
+              aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((v) => !v)}
+            >
+              {showPassword ? "Ocultar" : "Mostrar"}
+            </Button>
+          </div>
           {passwordError && (
             <FieldError id="login-password-error">{passwordError}</FieldError>
           )}
         </Field>
-        {formError && (
-          <p role="alert" className="text-sm text-destructive">
-            {formError}
-          </p>
-        )}
+        {formAlert}
         {/* run-28 P3-1 (polish, documented skip): pending stays label-only
             ("Iniciando sesión…" / "Creando cuenta…") with disabled grammar
             and no spinner. No Loader2/animate-spin precedent exists in the
@@ -152,6 +356,16 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
               ? "Iniciando sesión…"
               : "Iniciar sesión"}
         </Button>
+        {!isSignup && (
+          <Button
+            type="button"
+            variant="link"
+            disabled={busy}
+            onClick={openReset}
+          >
+            ¿Olvidaste tu contraseña?
+          </Button>
+        )}
         <Button
           type="button"
           variant="link"

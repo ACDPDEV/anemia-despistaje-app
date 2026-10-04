@@ -15,6 +15,10 @@ export type AuthClient = {
     email: string;
     password: string;
   }) => Promise<{ data: unknown; error: { message: string } | null }>;
+  resetPasswordForEmail: (
+    email: string,
+    options?: { redirectTo?: string },
+  ) => Promise<{ data: unknown; error: { message: string } | null }>;
   signOut: () => Promise<{ error: { message: string } | null }>;
   getSession: () => Promise<{
     data: { session: Session | null };
@@ -99,6 +103,25 @@ export async function signOut(
   const client = resolveClient(explicit);
   if (!client) return;
   const { error } = await client.auth.signOut();
+  if (error) throw new Error(toSpanishErrorMessage(error.message));
+}
+
+// Recovery email over supabase.auth.resetPasswordForEmail. Redirects back
+// to the app origin so the recovery link lands on this deployment; that
+// origin must be allowlisted under Supabase Dashboard → Authentication →
+// URL Configuration → Redirect URLs, or the link is rejected server-side.
+export async function requestPasswordReset(
+  email: string,
+  explicit?: SupabaseLike | null,
+): Promise<void> {
+  const client = resolveClient(explicit);
+  if (!client) throw new Error("La autenticación no está configurada en este equipo.");
+  const redirectTo =
+    typeof window !== "undefined" ? window.location.origin : undefined;
+  const { error } = await client.auth.resetPasswordForEmail(
+    email,
+    redirectTo ? { redirectTo } : undefined,
+  );
   if (error) throw new Error(toSpanishErrorMessage(error.message));
 }
 

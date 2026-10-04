@@ -40,6 +40,9 @@ vi.mock("../lib/syncGuard", async (importOriginal) => {
     get lastSyncError() {
       return actual.lastSyncError;
     },
+    get lastSyncNotice() {
+      return actual.lastSyncNotice;
+    },
     get lastSyncErrorAt() {
       return actual.lastSyncErrorAt;
     },
@@ -262,7 +265,7 @@ describe("SyncStatusChip", () => {
     );
   });
 
-  it("runs the guarded sync path and clears the pending count", async () => {
+  it("runs the guarded sync path and voices the push success once", async () => {
     const id = seedDirty();
     pushMock.mockResolvedValue({
       ok: true,
@@ -273,7 +276,10 @@ describe("SyncStatusChip", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
 
-    await screen.findByText("A salvo en este equipo");
+    // Run-30 P1-b: the already-computed push message voices through the
+    // existing single announcer (no new strings, no second live region).
+    await screen.findByText("Se sincronizó 1 registro con Supabase.");
+    expect(statusText()).toBe("Se sincronizó 1 registro con Supabase.");
     expect(runGuardedSpy).toHaveBeenCalledTimes(1);
     expect(pushMock).toHaveBeenCalledTimes(1);
     expect(guardedPullMock).toHaveBeenCalledTimes(1);
@@ -355,7 +361,9 @@ describe("SyncStatusChip", () => {
     expect(retry).toBeInTheDocument();
 
     fireEvent.click(retry);
-    await screen.findByText("A salvo en este equipo");
+    // Run-30 P1-b: retry success voices the push confirmation through the
+    // announcer (the plain "A salvo" status no longer shows post-sync).
+    await screen.findByText("Se sincronizó 1 registro con Supabase.");
     expect(pushMock).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -415,7 +423,9 @@ describe("SyncStatusChip", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
 
-    await screen.findByText("A salvo en este equipo");
+    // Run-30 P1-b: success voices the push confirmation, not the plain
+    // status, while the tombstone still collects underneath.
+    await screen.findByText("Se sincronizó 1 registro con Supabase.");
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
 
@@ -451,7 +461,9 @@ describe("SyncStatusChip", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
 
-    await screen.findByText("1 por sincronizar");
+    // Run-30 P1-b: the announcer carries the push confirmation while the
+    // mid-flight edit keeps its row dirty for the next push.
+    await screen.findByText("Se sincronizó 1 registro con Supabase.");
     const row = usePadronStore.getState().pacientes[0];
     expect(row.nombre).toBe("Ana Editada");
     expect(row.dirty).toBe(true);
@@ -627,9 +639,15 @@ describe("SyncStatusChip", () => {
     expect(chip.getAttribute("title")).toMatch(/la red falló/i);
     fireEvent.click(retry);
     await waitFor(() => {
+      // Run-30 P1-b: retry success voices the push confirmation through
+      // the collapsed name (the plain "A salvo" status no longer shows
+      // post-sync).
       expect(
         within(screen.getByTestId("sync-status-chip")).getByRole("status"),
-      ).toHaveAttribute("aria-label", "A salvo en este equipo");
+      ).toHaveAttribute(
+        "aria-label",
+        "Se sincronizó 1 registro con Supabase.",
+      );
     });
     expect(pushMock).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId("sync-error-dot")).not.toBeInTheDocument();
@@ -786,6 +804,87 @@ describe("shared module sync error (run-24 P2-2)", () => {
     expect(
       screen.queryByRole("button", { name: /reintentar/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("sync outcome note (run-30 P1-b)", () => {
+  it("surfaces the cooldown skip instead of rendering nothing", async () => {
+    seedDirty();
+    guardedPullMock.mockImplementationOnce(async () => ({
+      ok: true,
+      merged: usePadronStore.getState().pacientes,
+      message: guard.PULL_COOLDOWN_MESSAGE,
+      skipped: "cooldown" as const,
+    }));
+    render(<SyncStatusChip />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+
+    // The default push mock replicates nothing (pushedIds []), so the
+    // announcer carries the existing cooldown constant verbatim — the
+    // second tap inside the window no longer reads as a dead button.
+    await screen.findByText(guard.PULL_COOLDOWN_MESSAGE);
+    expect(statusText()).toBe(guard.PULL_COOLDOWN_MESSAGE);
+    // No fresh rows: nothing merged, no error, cooldown vocabulary only.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("joins a real push confirmation with the cooldown line behind a push", async () => {
+    const id = seedDirty();
+    pushMock.mockResolvedValueOnce({
+      ok: true,
+      pushedIds: [id],
+      message: "Se sincronizó 1 registro con Supabase.",
+    });
+    guardedPullMock.mockImplementationOnce(async () => ({
+      ok: true,
+      merged: usePadronStore.getState().pacientes,
+      message: guard.PULL_COOLDOWN_MESSAGE,
+      skipped: "cooldown" as const,
+    }));
+    render(<SyncStatusChip />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+
+    // Both computed strings, one honest line, no new copy.
+    await screen.findByText(
+      `Se sincronizó 1 registro con Supabase. ${guard.PULL_COOLDOWN_MESSAGE}`,
+    );
+    expect(usePadronStore.getState().pacientes[0].dirty).toBe(false);
+  });
+
+  it("announces success once: receipt ticks never move the announcer", async () => {
+    vi.useFakeTimers();
+    try {
+      seedDirty();
+      render(<SyncStatusChip />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+      // Flush the async guarded sync (microtasks only — no timers inside).
+      await act(async () => {});
+      // Default push replicates nothing, so the pull message voices.
+      expect(statusText()).toBe("Sincronizado.");
+
+      // Fast 5s ticks re-render the receipt, then the slow cadence: the
+      // announcer must never move (no per-tick re-announce).
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(statusText()).toBe("Sincronizado.");
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(statusText()).toBe("Sincronizado.");
+      // Still one live region; the ticking receipt stays non-live.
+      const chip = screen.getByTestId("sync-status-chip");
+      expect(within(chip).getAllByRole("status")).toHaveLength(1);
+      expect(screen.getByTestId("sync-receipt")).not.toHaveAttribute("role");
+      expect(screen.getByTestId("sync-receipt")).not.toHaveAttribute(
+        "aria-live",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -6,13 +6,16 @@ import { createSupabaseSyncTable, filterUnchangedIds, pushDirty } from "../lib/s
 import { getSupabaseClient } from "../lib/supabase";
 import {
   clearSyncError,
+  clearSyncNotice,
   formatLastSyncAgo,
   formatSyncPending,
   guardedPull,
   isSyncing,
   lastPullAt,
   lastSyncError,
+  lastSyncNotice,
   recordSyncError,
+  recordSyncNotice,
   runGuarded,
   subscribeSyncState,
   SYNC_BUSY_MESSAGE,
@@ -54,6 +57,7 @@ export type SyncAction = {
   syncing: boolean;
   error: string | null;
   text: string;
+  displayText: string;
   receipt: string;
   title: string;
   showAction: boolean;
@@ -88,6 +92,11 @@ export function useSyncAction(): SyncAction {
   // Last sync failure: the module-owned lastSyncError, mirrored live so
   // every surface announces the same string and clears together.
   const [error, setError] = useState<string | null>(lastSyncError);
+  // Last sync outcome note (success or cooldown skip): the module-owned
+  // lastSyncNotice, mirrored live like the error so every surface voices
+  // the same line (run-30 P1-b). Rendered through the existing single
+  // role=status announcer below, never the ticking receipt.
+  const [notice, setNotice] = useState<string | null>(lastSyncNotice);
   const alive = useRef(true);
 
   useEffect(() => {
@@ -97,6 +106,7 @@ export function useSyncAction(): SyncAction {
         setSyncing(isSyncing);
         setLastSyncAt(lastPullAt);
         setError(state.lastSyncError);
+        setNotice(state.lastSyncNotice);
       }
     });
     return () => {
@@ -117,6 +127,9 @@ export function useSyncAction(): SyncAction {
   function fail(message: string): void {
     // Module-owned: notifies, so the failing surface AND every other
     // mounted surface show the identical string (no per-instance drift).
+    // A stale success/cooldown note clears first so it never lingers
+    // beside the alert.
+    clearSyncNotice();
     recordSyncError(message);
   }
 
@@ -131,6 +144,7 @@ export function useSyncAction(): SyncAction {
 
     // Push first so local edits reach the remote before the pull merge.
     let pushedIds: string[];
+    let pushMessage: string;
     try {
       const pushOutcome = await runGuarded(() =>
         pushDirty(snapshot, table, online),
@@ -144,6 +158,7 @@ export function useSyncAction(): SyncAction {
         return;
       }
       pushedIds = pushOutcome.value.pushedIds;
+      pushMessage = pushOutcome.value.message;
     } catch (err) {
       fail(
         err instanceof Error
@@ -182,11 +197,28 @@ export function useSyncAction(): SyncAction {
       );
       if (!alive.current) return;
       if (!pull.ok) {
+        clearSyncNotice();
         recordSyncError(pull.message);
         return;
       }
-      // Cooldown hits (ok, skipped) carry no fresh rows: nothing to apply.
-      if (!pull.skipped) applyPullMerge(pull.merged);
+      // Cooldown hits (ok, skipped) carry no fresh rows: nothing to apply —
+      // but the skip still speaks (run-30 P1-b): a second tap inside the
+      // cooldown window used to render nothing (dead button on slow links),
+      // and the push/pull success lines were computed then discarded.
+      // Success voices that already-computed module vocabulary, one honest
+      // line through the existing announcer: the push confirmation when
+      // local edits replicated, else the pull message. Behind a push, the
+      // cooldown line joins the push confirmation (both computed strings,
+      // no new copy). The ticking receipt stays non-live, so the note
+      // announces exactly once per sync action.
+      if (pull.skipped === "cooldown") {
+        recordSyncNotice(
+          pushedIds.length > 0 ? `${pushMessage} ${pull.message}` : pull.message,
+        );
+        return;
+      }
+      applyPullMerge(pull.merged);
+      recordSyncNotice(pushedIds.length > 0 ? pushMessage : pull.message);
     } catch (err) {
       fail(
         err instanceof Error
@@ -209,11 +241,15 @@ export function useSyncAction(): SyncAction {
     lastSyncAt === null
       ? SYNC_NEVER_SYNCED_RECEIPT
       : formatLastSyncAgo(Math.max(0, Math.floor((Date.now() - lastSyncAt) / 1000)));
+  // The chip's single announcer: the last outcome note (success/cooldown)
+  // when one stands, else the pending/safe status. Static between sync
+  // actions, so receipt ticks never re-announce it.
+  const displayText = notice ?? text;
   // Mirrors the full status so the collapsed (icon-only) sidebar clipping
   // stays discoverable through the native tooltip.
-  const title = error ? `${text} · ${error}` : `${text} · ${receipt}`;
+  const title = error ? `${displayText} · ${error}` : `${displayText} · ${receipt}`;
 
-  return { online, pending, syncing, error, text, receipt, title, showAction, buttonLabel, handleSync };
+  return { online, pending, syncing, error, text, displayText, receipt, title, showAction, buttonLabel, handleSync };
 }
 
 // Shared sync button (expanded chip + phone rows): same tag, same
@@ -299,7 +335,7 @@ export function PhoneSyncRow({ testId }: { testId: string }) {
     >
       <div className="flex items-center gap-2">
         <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {sync.text}
+          {sync.displayText}
         </p>
         {sync.showAction && (
           <SyncActionButton
@@ -325,6 +361,7 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
     syncing,
     error,
     text,
+    displayText,
     receipt,
     title,
     showAction,
@@ -334,8 +371,8 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
 
   // Icon-only form for the collapsed sidebar: same title composition, a
   // pending-count badge, and an accessible name so the status survives
-  // without the clipped text lines. The accessible name is STATIC apart
-  // from failure (status text + pending count only, never the ticking
+  // without the clipped text lines. The accessible name is STATIC between
+  // sync actions (status text or the last outcome note, never the ticking
   // receipt): role="status" re-announces on every accessible-name change,
   // so embedding the receipt would read "hace 5s… hace 10s…" unattended
   // every tick. On failure the name carries the error plus the retry
@@ -359,7 +396,7 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   if (collapsed) {
     const Icon = !online ? CloudOff : syncing ? RefreshCw : Cloud;
     const collapsedName =
-      error !== null ? `${text}. ${error}. Reintentar disponible` : text;
+      error !== null ? `${displayText}. ${error}. Reintentar disponible` : displayText;
     return (
       <div
         data-testid="sync-status-chip"
@@ -423,7 +460,7 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
           role="status"
           className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
         >
-          {text}
+          {displayText}
         </p>
         {showAction && (
           <SyncActionButton
@@ -433,14 +470,15 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
           />
         )}
       </div>
-      {/* Receipt line: deliberately NOT a live region. The pending-count
-          line above is the chip's single announcer; the receipt re-renders
-          on an adaptive tick (every 5s while fresh), so a role="status"
+      {/* Receipt line: deliberately NOT a live region. The status line
+          above is the chip's single announcer (pending/safe text, or the
+          last outcome note after a sync); the receipt re-renders on an
+          adaptive tick (every 5s while fresh), so a role="status"
           here would announce "hace 5s… hace 10s…" unattended. Screen
           readers reach the receipt on demand; the collapsed icon keeps a
-          STATIC accessible name (status text only, plus the error + retry
-          affordance while failed) for the same reason, with the receipt
-          mouse-only in its title tooltip. */}
+          STATIC accessible name (status text or outcome note only, plus
+          the error + retry affordance while failed) for the same reason,
+          with the receipt mouse-only in its title tooltip. */}
       <p
         data-testid="sync-receipt"
         className="truncate text-[11px] text-muted-foreground"

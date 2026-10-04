@@ -81,20 +81,32 @@ export let lastSyncError: string | null = null;
 // never rendered — the chip receipt already owns the time vocabulary.
 export let lastSyncErrorAt: number | null = null;
 
+// Last sync outcome note (success or cooldown), module-scoped like
+// lastSyncError so every surface voices the same line (run-30 P1-b). The
+// chip renders it through the EXISTING single role=status announcer —
+// never the ticking receipt, which stays non-live — so a success speaks
+// exactly once per sync action instead of re-announcing on every 5s/30s
+// receipt refresh. Holds only already-computed module vocabulary
+// (push/pull messages, PULL_COOLDOWN_MESSAGE); no new strings. Cleared when
+// a failure lands (the alert speaks instead) and on reset for tests.
+export let lastSyncNotice: string | null = null;
+
 // Reactive payload: sync flag plus last-pull timestamp so the receipt line
 // can update live after a sync completes, plus the shared last error so a
-// failure on one surface appears on every other surface.
+// failure on one surface appears on every other surface, plus the shared
+// last outcome note so success/cooldown speak identically everywhere.
 export interface SyncState {
   isSyncing: boolean;
   lastPullAt: number | null;
   lastSyncError: string | null;
+  lastSyncNotice: string | null;
 }
 
 type Listener = (state: SyncState) => void;
 const listeners = new Set<Listener>();
 
 function notify(): void {
-  const state: SyncState = { isSyncing, lastPullAt, lastSyncError };
+  const state: SyncState = { isSyncing, lastPullAt, lastSyncError, lastSyncNotice };
   for (const listener of listeners) listener(state);
 }
 
@@ -161,6 +173,22 @@ export function clearSyncError(): void {
   notify();
 }
 
+// Records the last sync outcome note (success or cooldown skip) and
+// notifies, so every mounted surface voices the identical line through its
+// existing announcer.
+export function recordSyncNotice(message: string): void {
+  lastSyncNotice = message;
+  notify();
+}
+
+// Clears the shared outcome note (a failure lands, so the alert speaks
+// instead and no stale success lingers beside it).
+export function clearSyncNotice(): void {
+  if (lastSyncNotice === null) return;
+  lastSyncNotice = null;
+  notify();
+}
+
 export interface GuardedPullOptions {
   now?: number;
   cooldownMs?: number;
@@ -197,11 +225,13 @@ export async function guardedPull(
 }
 
 // Test-only seam: clears the in-flight flag, the cooldown timestamp, the
-// shared last error, and any subscribers so suites stay isolated.
+// shared last error, the shared outcome note, and any subscribers so suites
+// stay isolated.
 export function resetSyncGuardForTests(): void {
   isSyncing = false;
   lastPullAt = null;
   lastSyncError = null;
   lastSyncErrorAt = null;
+  lastSyncNotice = null;
   listeners.clear();
 }

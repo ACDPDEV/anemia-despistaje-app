@@ -10,6 +10,7 @@ import {
   getSession,
   isAuthConfigured,
   onAuthStateChange,
+  requestPasswordReset,
   signInWithPassword,
   signOut,
   signUp,
@@ -28,6 +29,7 @@ function makeFakeAuth(overrides: Record<string, unknown> = {}) {
       data: { session: { access_token: "tok" }, user: { id: "u1" } },
       error: null,
     })),
+    resetPasswordForEmail: vi.fn(async () => ({ data: {}, error: null })),
     signOut: vi.fn(async () => ({ error: null })),
     getSession: vi.fn(async () => ({
       data: { session: { access_token: "tok" } },
@@ -181,5 +183,29 @@ describe("auth module", () => {
     await expect(
       signUp("a@b.c", "secret", { auth: failing } as never),
     ).rejects.toThrow("Ese correo ya está registrado.");
+  });
+
+  it("sends the recovery mail with the app origin as redirect", async () => {
+    const fake = makeFakeAuth();
+    await requestPasswordReset("a@b.c", { auth: fake } as never);
+    expect(fake.resetPasswordForEmail).toHaveBeenCalledTimes(1);
+    expect(fake.resetPasswordForEmail).toHaveBeenCalledWith("a@b.c", {
+      redirectTo: window.location.origin,
+    });
+  });
+
+  it("rejects the recovery mail when unconfigured and maps provider errors", async () => {
+    await expect(requestPasswordReset("a@b.c", null)).rejects.toThrow(
+      /no está configurada/,
+    );
+    const failing = makeFakeAuth({
+      resetPasswordForEmail: vi.fn(async () => ({
+        data: {},
+        error: { message: "Failed to fetch" },
+      })),
+    });
+    await expect(
+      requestPasswordReset("a@b.c", { auth: failing } as never),
+    ).rejects.toThrow("Sin conexión. Revisa tu red e inténtalo de nuevo.");
   });
 });
