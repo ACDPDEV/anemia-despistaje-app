@@ -417,12 +417,15 @@ export function PadronView({
   // dismiss (×) that drops the notice without restoring (tombstone stays).
   // Small screens: full-width bottom sheet (left+right anchored, no
   // max-width) so the toast never hovers over the row action column.
+  // Desktop (sm+): docked bottom-LEFT — the row-action column lives on the
+  // right (last table column), so a right-docked toast would cover row
+  // actions; left-docking clears them with zero layout shift.
   const undoToast = undoGroups.length > 0 && (
     <div
       role="status"
       data-testid="undo-toast"
       ref={undoBoxRef}
-      className="fixed right-4 bottom-4 z-50 flex max-w-sm flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 shadow-lg max-sm:right-4 max-sm:left-4 max-sm:max-w-none"
+      className="fixed right-4 bottom-4 z-50 flex max-w-sm flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 shadow-lg max-sm:right-4 max-sm:left-4 max-sm:max-w-none sm:right-auto sm:left-4"
     >
       {[...undoGroups].reverse().map((group) => (
         <div
@@ -502,9 +505,15 @@ export function PadronView({
   // the chip vocabulary verbatim (pending count + last-sync receipt, or
   // "Aún sin sincronizar"): the absolute stamp tells the reader when the
   // paper was frozen, so the relative receipt reads against a known
-  // moment instead of lying.
+  // moment instead of lying. One date grammar per surface: the paper
+  // header speaks es-PE throughout (title date-only, Impreso with time);
+  // ISO (YYYY-MM-DD) lives only in padronFilename/CSV machine artifacts.
   const now = new Date();
-  const todayStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const printDate = new Intl.DateTimeFormat("es-PE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(now);
   const printStamp = new Intl.DateTimeFormat("es-PE", {
     day: "numeric",
     month: "short",
@@ -627,7 +636,7 @@ export function PadronView({
       )}
       <div className="padron-print-header hidden print:block">
         <p className="text-lg font-semibold">
-          Padrón de pacientes — {todayStamp}
+          Padrón de pacientes — {printDate}
         </p>
         <p className="text-sm">
           Total: {visible.length} · Moderada + Severa:{" "}

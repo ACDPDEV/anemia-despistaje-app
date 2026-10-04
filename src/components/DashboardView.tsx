@@ -289,7 +289,7 @@ export function DashboardView({
                   <BarChart data={hbData}>
                     <XAxis
                       dataKey="band"
-                      tick={{ fontSize: 11 }}
+                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                       interval={0}
                       tickFormatter={(value: string) =>
                         HB_TICK_SHORT[value as Diagnosis] ?? value
@@ -300,7 +300,7 @@ export function DashboardView({
                       {hbData.map((d) => (
                         <Cell key={d.band} fill={SEVERITY_FILL[d.band]} />
                       ))}
-                    <LabelList dataKey="count" position="top" />
+                    <LabelList dataKey="count" position="top" fill="var(--foreground)" />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -348,13 +348,13 @@ export function DashboardView({
             <div data-testid="age-chart" className="h-[220px] w-full min-w-0">
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={ageData}>
-                  <XAxis dataKey="band" tick={{ fontSize: 11 }} interval={0} />
+                  <XAxis dataKey="band" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} interval={0} />
                   <YAxis hide />
                   <Bar dataKey="count" isAnimationActive={false}>
                     {ageData.map((d) => (
                       <Cell key={d.band} fill={SEVERITY_FILL[ageRisk[d.band]]} />
                     ))}
-                    <LabelList dataKey="count" position="top" />
+                    <LabelList dataKey="count" position="top" fill="var(--foreground)" />
                     </Bar>
                   </BarChart>
               </ResponsiveContainer>

@@ -462,6 +462,28 @@ describe("DashboardView", () => {
       container.querySelector(".recharts-tooltip-wrapper"),
     ).toBeNull();
   });
+
+  it("paints chart text with theme tokens so dark mode stays legible", () => {
+    seedPadron();
+    const { container } = render(<DashboardView />);
+    // Both XAxis tick sets use the muted token (secondary text on the
+    // chart surface, never the SVG light-gray default).
+    const tickTexts = [
+      ...container.querySelectorAll(".recharts-cartesian-axis-tick-label text"),
+    ];
+    expect(tickTexts.length).toBeGreaterThan(0);
+    for (const tick of tickTexts) {
+      expect(tick.getAttribute("fill")).toBe("var(--muted-foreground)");
+    }
+    // Value labels use the foreground token for full data contrast.
+    const valueLabels = [
+      ...container.querySelectorAll(".recharts-label-list text"),
+    ];
+    expect(valueLabels.length).toBeGreaterThan(0);
+    for (const label of valueLabels) {
+      expect(label.getAttribute("fill")).toBe("var(--foreground)");
+    }
+  });
 });
 
 describe("captionFor", () => {

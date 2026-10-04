@@ -179,23 +179,31 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
 
   // Icon-only form for the collapsed sidebar: same title composition, a
   // pending-count badge, and an accessible name so the status survives
-  // without the clipped text lines. The accessible name is STATIC (status
-  // text + pending count only, never the ticking receipt): role="status"
-  // re-announces on every accessible-name change, so embedding the receipt
-  // would read "hace 5s… hace 10s…" unattended every tick. The receipt
-  // stays mouse-only in the title tooltip, and on demand in the expanded
+  // without the clipped text lines. The accessible name is STATIC apart
+  // from failure (status text + pending count only, never the ticking
+  // receipt): role="status" re-announces on every accessible-name change,
+  // so embedding the receipt would read "hace 5s… hace 10s…" unattended
+  // every tick. On failure the name carries the error plus the retry
+  // affordance ("… . Reintentar disponible") so the collapsed user is
+  // never told "A salvo" while rows are dirty; the receipt stays
+  // mouse-only in the title tooltip, and on demand in the expanded
   // receipt line below. The sync action survives collapse as an icon button
   // (same handler, same enabled/disabled grammar, Alt+G shortcut) so
-  // icon-width users can still sync.
+  // icon-width users can still sync. A small destructive error dot on the
+  // action button gives a non-text failure signal without layout shift;
+  // the expanded/mobile error line keeps the single role="alert" so the
+  // collapsed name never double-announces.
   if (collapsed) {
     const Icon = !online ? CloudOff : syncing ? RefreshCw : Cloud;
+    const collapsedName =
+      error !== null ? `${text}. ${error}. Reintentar disponible` : text;
     return (
       <div
         data-testid="sync-status-chip"
         title={title}
         className="flex flex-col items-center gap-1 py-1"
       >
-        <span className="relative inline-flex" role="status" aria-label={text}>
+        <span className="relative inline-flex" role="status" aria-label={collapsedName}>
           <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
           {pending > 0 && (
             <span
@@ -208,20 +216,29 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
           )}
         </span>
         {showAction && (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-xs"
-            data-sync-action="true"
-            className="pointer-coarse:min-h-11"
-            disabled={syncing}
-            aria-label={buttonLabel}
-            aria-keyshortcuts="Alt+G"
-            title={`${buttonLabel} (Alt+G) · ${text}`}
-            onClick={() => void handleSync()}
-          >
-            <RefreshCw aria-hidden="true" />
-          </Button>
+          <span className="relative inline-flex">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-xs"
+              data-sync-action="true"
+              className="pointer-coarse:min-h-11"
+              disabled={syncing}
+              aria-label={buttonLabel}
+              aria-keyshortcuts="Alt+G"
+              title={`${buttonLabel} (Alt+G) · ${text}`}
+              onClick={() => void handleSync()}
+            >
+              <RefreshCw aria-hidden="true" />
+            </Button>
+            {error !== null && (
+              <span
+                data-testid="sync-error-dot"
+                aria-hidden="true"
+                className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-destructive"
+              />
+            )}
+          </span>
         )}
       </div>
     );
@@ -257,8 +274,9 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
           on an adaptive tick (every 5s while fresh), so a role="status"
           here would announce "hace 5s… hace 10s…" unattended. Screen
           readers reach the receipt on demand; the collapsed icon keeps a
-          STATIC accessible name (status text only) for the same reason,
-          with the receipt mouse-only in its title tooltip. */}
+          STATIC accessible name (status text only, plus the error + retry
+          affordance while failed) for the same reason, with the receipt
+          mouse-only in its title tooltip. */}
       <p
         data-testid="sync-receipt"
         className="truncate text-[11px] text-muted-foreground"

@@ -549,4 +549,75 @@ describe("SyncStatusChip", () => {
       vi.useRealTimers();
     }
   });
+
+  it("carries the failure in the collapsed accessible name with a retry cue and an error dot (no receipt)", async () => {
+    const id = seedDirty();
+    pushMock.mockResolvedValue({
+      ok: true,
+      pushedIds: [id],
+      message: "Se sincronizó 1 registro con Supabase.",
+    });
+    pushMock.mockRejectedValueOnce(new Error("La red falló."));
+    render(<SyncStatusChip collapsed />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+
+    const chip = screen.getByTestId("sync-status-chip");
+    const status = within(chip).getByRole("status");
+    await waitFor(() => {
+      expect(status.getAttribute("aria-label")).toMatch(/la red falló/i);
+    });
+    const name = status.getAttribute("aria-label")!;
+    // Honest collapsed name: static status + error + retry affordance.
+    expect(name).toMatch(/reintentar disponible/i);
+    // Receipt stays out of the live name (no ticking announcements).
+    expect(name).not.toMatch(/aún sin sincronizar/i);
+    expect(name).not.toMatch(/última sincronización/i);
+    expect(name).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    // Visible compact error signal on the icon button: destructive token,
+    // absolute (no layout shift), hidden from AT (the name carries it).
+    const dot = screen.getByTestId("sync-error-dot");
+    expect(dot.className).toMatch(/bg-destructive/);
+    expect(dot.className).toMatch(/absolute/);
+    expect(dot).toHaveAttribute("aria-hidden", "true");
+    // Reintentar stays the action and retries through the same handler.
+    // Collapsed renders no visible text (icon only), so the recovery
+    // reads off the accessible name, not findByText.
+    const retry = screen.getByRole("button", { name: /reintentar/i });
+    expect(retry).toBeInTheDocument();
+    // The mouse-only tooltip mirrors the failure while it stands.
+    expect(chip.getAttribute("title")).toMatch(/la red falló/i);
+    fireEvent.click(retry);
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId("sync-status-chip")).getByRole("status"),
+      ).toHaveAttribute("aria-label", "A salvo en este equipo");
+    });
+    expect(pushMock).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("sync-error-dot")).not.toBeInTheDocument();
+    // Collapsed never double-announces: the expanded/mobile role=alert
+    // owns the failure, so no alert lives here.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows no error dot and keeps the static name when the collapsed chip is clean", () => {
+    render(<SyncStatusChip collapsed />);
+    const status = within(
+      screen.getByTestId("sync-status-chip"),
+    ).getByRole("status");
+    expect(status).toHaveAttribute("aria-label", "A salvo en este equipo");
+    expect(screen.queryByTestId("sync-error-dot")).not.toBeInTheDocument();
+  });
+
+  it("keeps the expanded failure surface unchanged (role=alert plus receipt)", async () => {
+    seedDirty();
+    pushMock.mockRejectedValueOnce(new Error("La red falló."));
+    render(<SyncStatusChip />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("La red falló.");
+    expect(screen.getByTestId("sync-receipt")).toBeInTheDocument();
+  });
 });

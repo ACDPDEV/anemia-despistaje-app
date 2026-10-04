@@ -685,6 +685,27 @@ describe("PadronView", () => {
     expect(toast.className).toMatch(/max-sm:max-w-none/);
   });
 
+  it("docks the undo toast bottom-left on desktop so it clears the right-side row actions", () => {
+    seedTwo();
+    const { container } = render(<PadronView />);
+    // The action column is the LAST table column (right side): a
+    // right-docked toast would cover row actions on sm+, so the toast
+    // docks left on desktop.
+    const heads = [...container.querySelectorAll("thead tr th")];
+    expect(heads.length).toBeGreaterThan(0);
+    expect(heads[heads.length - 1].className).toMatch(/padron-action-col/);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    const toast = screen.getByTestId("undo-toast");
+    expect(toast.className).toMatch(/sm:left-4/);
+    expect(toast.className).toMatch(/sm:right-auto/);
+    // Phone sheet intact: full-width bottom sheet below sm.
+    expect(toast.className).toMatch(/max-sm:left-4/);
+    expect(toast.className).toMatch(/max-sm:right-4/);
+    expect(toast.className).toMatch(/max-sm:max-w-none/);
+  });
+
   it("reports the select-all mixed state through indeterminate", () => {
     seedTwo();
     render(<PadronView />);
@@ -1462,6 +1483,24 @@ describe("PadronView bulk scope + print sync state", () => {
     expect(header).toHaveTextContent("Última sincronización hace 2 min");
     expect(header).toHaveTextContent(/impreso:/i);
     expect(header?.textContent).toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it("titles the print header with the es-PE date: one grammar per surface, no ISO on paper", () => {
+    resetSyncGuardForTests();
+    seedTwo();
+    const { container } = render(<PadronView />);
+    const header = container.querySelector(".padron-print-header");
+    expect(header).not.toBeNull();
+    // Title date comes from the SAME es-PE formatter as Impreso
+    // (date-only variant, e.g. "4 oct 2026").
+    const expectedDate = new Intl.DateTimeFormat("es-PE", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(new Date());
+    expect(header).toHaveTextContent(`Padrón de pacientes — ${expectedDate}`);
+    // ISO lives only in padronFilename/CSV machine artifacts, never paper.
+    expect(header?.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 });
 
