@@ -9,6 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { cn } from "../lib/utils";
 import type { Diagnosis } from "../domain/anemia";
@@ -111,8 +112,13 @@ export const HB_TICK_SHORT: Record<Diagnosis, string> = {
 // Screening overview: KPI cards, Hb distribution bars, and age-group bars.
 // All values derive from visible rows only: tombstones (deletedAt set)
 // are excluded from total, age bands, and (via selectors) counts/average.
-// Spanish labels, English identifiers.
-export function DashboardView() {
+// Spanish labels, English identifiers. The empty state mirrors PadronView:
+// a guide line plus a register call-to-action when the shell provides one.
+export function DashboardView({
+  onEmptyRegister,
+}: {
+  onEmptyRegister?: () => void;
+}) {
   const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
   const countByDiagnosis = usePadronStore((s) => s.countByDiagnosis);
   const averageHb = usePadronStore((s) => s.averageHb);
@@ -167,6 +173,14 @@ export function DashboardView() {
         <p data-testid="empty-guide" className="text-sm text-muted-foreground">
           Registra tu primer paciente para ver el panel
         </p>
+      )}
+
+      {isEmpty && onEmptyRegister && (
+        <div>
+          <Button type="button" onClick={onEmptyRegister}>
+            Registrar paciente
+          </Button>
+        </div>
       )}
 
       <Card data-testid="hero-modsev">

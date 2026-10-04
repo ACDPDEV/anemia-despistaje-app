@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
@@ -222,6 +222,22 @@ describe("DashboardView", () => {
     expect(screen.getByTestId("empty-guide")).toHaveTextContent(
       /registra tu primer paciente para ver el panel/i,
     );
+  });
+
+  it("calls onEmptyRegister from the empty-state call-to-action", () => {
+    const onEmptyRegister = vi.fn();
+    render(<DashboardView onEmptyRegister={onEmptyRegister} />);
+    expect(screen.getByTestId("empty-guide")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /registrar paciente/i }));
+    expect(onEmptyRegister).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no register call-to-action without the prop", () => {
+    render(<DashboardView />);
+    expect(screen.getByTestId("empty-guide")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /registrar paciente/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("leads with a triage sentence ahead of the KPI cards", () => {

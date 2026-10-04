@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { getDuplicateWarning, MAX_NOMBRE, usePadronStore } from "../stores/padronStore";
+import { useRegisterDraftStore } from "../stores/registerDraftStore";
 import { HB_CUTOFF_LABEL, type Diagnosis } from "../domain/anemia";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -7,14 +8,21 @@ import { Input } from "@/components/ui/input";
 
 // Registration form with Spanish labels and validation messages.
 // Delegates persistence and diagnosis to the padron store.
+// Field values (Nombre/Edad/Hb) are controlled by the persisted draft
+// store, not local useState: switching tabs unmounts this form, and the
+// draft must survive that (jornada interruptions) plus full reloads.
+// One selector per field keeps keystroke renders to one, same as useState.
+// Errors, success, and duplicate warning stay local (ephemeral UI).
 // Validation errors are per-field (each Input points at its own error id);
 // only store-level failures (e.g. the 100-record cap) use the form alert
 // and leave every field valid.
 export function RegisterForm() {
   const add = usePadronStore((s) => s.add);
-  const [nombre, setNombre] = useState("");
-  const [edad, setEdad] = useState("");
-  const [hb, setHb] = useState("");
+  const nombre = useRegisterDraftStore((s) => s.nombre);
+  const edad = useRegisterDraftStore((s) => s.edad);
+  const hb = useRegisterDraftStore((s) => s.hb);
+  const setDraft = useRegisterDraftStore((s) => s.setDraft);
+  const clearDraft = useRegisterDraftStore((s) => s.clearDraft);
   const [nombreError, setNombreError] = useState<string | null>(null);
   const [edadError, setEdadError] = useState<string | null>(null);
   const [hbError, setHbError] = useState<string | null>(null);
@@ -71,9 +79,8 @@ export function RegisterForm() {
     setHbError(null);
     setFormError(null);
     setLastDiagnosis(usePadronStore.getState().pacientes.at(-1)?.diagnostico ?? null);
-    setNombre("");
-    setEdad("");
-    setHb("");
+    // The draft is consumed: a registered patient must never replay.
+    clearDraft();
     window.setTimeout(() => nombreRef.current?.focus(), 0);
   }
 
@@ -88,7 +95,7 @@ export function RegisterForm() {
             value={nombre}
             maxLength={MAX_NOMBRE}
             onChange={(e) => {
-              setNombre(e.target.value);
+              setDraft({ nombre: e.target.value });
               if (nombreError) setNombreError(null);
             }}
             aria-invalid={nombreError ? true : undefined}
@@ -105,7 +112,7 @@ export function RegisterForm() {
             inputMode="numeric"
             value={edad}
             onChange={(e) => {
-              setEdad(e.target.value);
+              setDraft({ edad: e.target.value });
               if (edadError) setEdadError(null);
             }}
             aria-invalid={edadError ? true : undefined}
@@ -121,7 +128,7 @@ export function RegisterForm() {
             inputMode="decimal"
             value={hb}
             onChange={(e) => {
-              setHb(e.target.value);
+              setDraft({ hb: e.target.value });
               if (hbError) setHbError(null);
             }}
             aria-invalid={hbError ? true : undefined}

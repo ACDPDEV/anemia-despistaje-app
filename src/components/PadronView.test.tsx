@@ -1673,3 +1673,151 @@ describe("PadronView capacity signal (P3)", () => {
     expect(counter.className).not.toMatch(/destructive/);
   });
 });
+
+describe("PadronView edit-save undo (P2-2)", () => {
+  function saveHbEdit(name: string, hb: string) {
+    const row = rowByName(name);
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: hb },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+  }
+
+  it("restores pre-save values when Deshacer follows a Guardar", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Ana Cambiada" },
+    });
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: "8.0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    // Same toast family as deletes: what happened plus Deshacer recovery.
+    expect(screen.getByText("Cambios guardados.")).toBeInTheDocument();
+    expect(screen.getByText("Ana Cambiada")).toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes[0].diagnostico).toBe(
+      "Anemia Moderada",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /deshacer/i }));
+    // Pre-save values restored, diagnosis recomputed, edit stays closed.
+    expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+    const restored = usePadronStore.getState().pacientes[0];
+    expect(restored.nombre).toBe("Ana Torres");
+    expect(restored.nivelHemoglobina).toBe(12.0);
+    expect(restored.diagnostico).toBe("Normal");
+    // The revert is itself a local change: requeued dirty for the next push.
+    expect(restored.dirty).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: /guardar/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /deshacer/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("moves focus to Deshacer after a Guardar, like deletes", () => {
+    seedTwo();
+    render(<PadronView />);
+    saveHbEdit("Ana Torres", "8.0");
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /deshacer/i }),
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("evicts the oldest group when an edit-save lands at capacity 3", () => {
+    const { add } = usePadronStore.getState();
+    add({ nombre: "Uno", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Dos", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Tres", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Cuatro", edadMeses: 24, nivelHemoglobina: 12.0 });
+    render(<PadronView />);
+    for (const name of ["Uno", "Dos", "Tres"]) {
+      const row = rowByName(name);
+      fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+      fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    }
+    expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(3);
+    // The 4th push is an edit-save: the oldest delete (Uno) evicts honestly.
+    saveHbEdit("Cuatro", "8.0");
+    expect(screen.getByText("Cambios guardados.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(3);
+    expect(
+      screen.getByText(/se expiró un deshacer anterior/i),
+    ).toBeInTheDocument();
+    // Newest group (the edit) undoes first and restores Cuatro's Hb.
+    fireEvent.click(screen.getAllByRole("button", { name: /deshacer/i })[0]);
+    const cuatro = usePadronStore
+      .getState()
+      .pacientes.find((p) => p.nombre === "Cuatro")!;
+    expect(cuatro.nivelHemoglobina).toBe(12.0);
+    expect(cuatro.diagnostico).toBe("Normal");
+    expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(2);
+    // Uno stays deleted: its net expired with the eviction.
+    expect(screen.queryByText("Uno")).not.toBeInTheDocument();
+  });
+
+  it("expires an edit-save toast on the 8s wall clock with sliding interaction", () => {
+    vi.useFakeTimers();
+    try {
+      seedTwo();
+      render(<PadronView />);
+      saveHbEdit("Ana Torres", "8.0");
+      expect(screen.getByText("Cambios guardados.")).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(7000);
+      });
+      // Activity inside the toast row slides the 8s window, like deletes.
+      fireEvent.pointerOver(
+        screen.getByRole("button", { name: /deshacer/i }),
+      );
+      act(() => {
+        vi.advanceTimersByTime(7000);
+      });
+      expect(screen.getByText("Cambios guardados.")).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(8000);
+      });
+      expect(
+        screen.queryByText("Cambios guardados."),
+      ).not.toBeInTheDocument();
+      // Expiry only drops the recovery net: the save itself stands.
+      expect(usePadronStore.getState().pacientes[0].nivelHemoglobina).toBe(8.0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("PadronView dismiss grammar (P3)", () => {
+  it("keeps one dismiss word per surface: Cancelar, Cerrar aviso, Descartar cambios?", () => {
+    seedTwo();
+    render(<PadronView />);
+    // Armed delete confirm disarms with Cancelar (row guard).
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    expect(
+      within(row).getByRole("button", { name: /^cancelar$/i }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    // Undo toast dismisses with Cerrar aviso (tombstone stays).
+    expect(
+      screen.getByRole("button", { name: /cerrar aviso/i }),
+    ).toBeInTheDocument();
+    // Dirty edit arms Descartar cambios? (never Cancelar for the loss).
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Cambiado" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^cancelar$/i }));
+    expect(
+      screen.getByRole("button", { name: /descartar cambios/i }),
+    ).toBeInTheDocument();
+  });
+});

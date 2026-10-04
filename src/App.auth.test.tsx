@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { usePadronStore } from "./stores/padronStore";
+import { useRegisterDraftStore } from "./stores/registerDraftStore";
 import App from "./App";
 import * as auth from "./lib/auth";
 
@@ -35,6 +36,7 @@ function setDesktopViewport() {
 beforeEach(() => {
   localStorage.clear();
   usePadronStore.getState().reset();
+  useRegisterDraftStore.getState().clearDraft();
   setDesktopViewport();
   vi.clearAllMocks();
 });

@@ -6,6 +6,7 @@ import {
   MAX_NOMBRE,
   MAX_PADRON,
   usePadronStore,
+  type NewPaciente,
   type Paciente,
 } from "../stores/padronStore";
 import { normalizeNombre } from "../lib/normalize";
@@ -31,6 +32,17 @@ import { useSlidingExpiry } from "../hooks/useSlidingExpiry";
 import { XIcon } from "lucide-react";
 
 const COLUMN_COUNT = 6;
+// Dismiss grammar (single source of truth; RegisterForm mirrors it):
+// - warnings/drafts → "Descartar": duplicate-warning hints here and in
+//   the create form acknowledge and dismiss, never delete.
+// - armed confirms → "Cancelar": disarms row/bulk delete guards and clean
+//   edit cancels; nothing is destroyed.
+// - dirty-discard confirm → "Descartar cambios?": the second tap confirms
+//   losing an unsaved edit draft (row-switch, filter, Cancelar, Esc).
+// - toast dismiss (×) → "Cerrar aviso" (aria-label): drops the notice,
+//   the tombstone stays deleted.
+// "Deshacer" is recovery, never dismissal: it restores deletes AND edit
+// preimages from the same undo stack.
 // Quiet capacity signal: the total-registered counter appears once the
 // padrón reaches ~80 of the 100-record cap. Total over the full store
 // (never the search-filtered visible slice).
@@ -50,6 +62,17 @@ interface UndoGroup {
   key: number;
   ids: string[];
   label: string;
+  // Edit-preimage revert: snapshot of the pre-save values of a Guardar.
+  // Undo applies them through update() (dirty requeued, diagnostico
+  // recomputed) instead of the delete restore() loop. Same group shape,
+  // same 8s sliding timers, same max-3 eviction — one stack, not two.
+  editPreimage?: EditPreimage;
+}
+
+// Pre-save values captured by the edit row before a successful Guardar.
+// The id plus the NewPaciente patch update() needs to re-apply them.
+export interface EditPreimage extends NewPaciente {
+  id: string;
 }
 
 // Filterable register: shadcn Table + single Input filter over nombre.
@@ -64,6 +87,10 @@ export function PadronView({
   const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
   const restore = usePadronStore((s) => s.restore);
   const remove = usePadronStore((s) => s.remove);
+  // Edit-undo revert path: preimages flow back through update(), the same
+  // commit path as Guardar (revalidates, recomputes diagnostico, stamps
+  // updatedAt, requeues dirty for the next push).
+  const update = usePadronStore((s) => s.update);
   // Print-only pending queue: dirty rows (tombstones included) over the full
   // store, not the visible slice. Same stable selector as `pacientes` (the
   // filter runs during render) so the subscription never re-fires on its
@@ -214,7 +241,7 @@ export function PadronView({
     );
   }
 
-  function pushUndoGroup(ids: string[], label: string) {
+  function pushUndoGroup(ids: string[], label: string, editPreimage?: EditPreimage) {
     undoKey.current += 1;
     const key = undoKey.current;
     const timer = window.setTimeout(() => dismissGroup(key), UNDO_TIMEOUT_MS);
@@ -227,7 +254,7 @@ export function PadronView({
         window.clearTimeout(oldestTimer);
         undoTimers.current.delete(oldest.key);
       }
-      const next = [...prev.slice(1), { key, ids, label }];
+      const next = [...prev.slice(1), { key, ids, label, editPreimage }];
       setUndoGroups(next);
       // Tie the notice to the oldest SURVIVING group (now first).
       evictionTiedKey.current = next[0].key;
@@ -236,7 +263,7 @@ export function PadronView({
       // No eviction: a fresh delete replaces a stale notice.
       evictionTiedKey.current = null;
       setEvictionNotice(null);
-      setUndoGroups([...prev, { key, ids, label }]);
+      setUndoGroups([...prev, { key, ids, label, editPreimage }]);
     }
   }
 
@@ -253,10 +280,31 @@ export function PadronView({
   function handleUndoGroup(key: number) {
     const group = groupsRef.current.find((g) => g.key === key);
     if (!group) return;
-    // Same per-row restore path as the single delete, looped: tombstone
-    // semantics per row unchanged (deletedAt cleared, dirty requeued).
-    for (const id of group.ids) restore(id);
+    if (group.editPreimage) {
+      // Edit revert (never a tombstone restore): pre-save values flow back
+      // through the same update() path as Guardar, so diagnostico is
+      // recomputed, updatedAt restamps, and the row requeues dirty for the
+      // next push. editingId untouched: an open edit keeps its draft (the
+      // dirty guard wins over silent replacement).
+      const { id, ...patch } = group.editPreimage;
+      update(id, patch);
+    } else {
+      // Same per-row restore path as the single delete, looped: tombstone
+      // semantics per row unchanged (deletedAt cleared, dirty requeued).
+      for (const id of group.ids) restore(id);
+    }
     dismissGroup(key);
+  }
+
+  // Edit-save undo: every Guardar snapshots its pre-save values onto the
+  // SAME 3-group stack (same timers, same eviction). A save landing while
+  // groups exist evicts normally. The savePushedUndo flag suppresses the
+  // edit-close focus hop below so focus lands on the newest Deshacer,
+  // exactly like deletes; the dirty guard is untouched.
+  const savePushedUndo = useRef(false);
+  function handleEditSaved(preimage: EditPreimage) {
+    savePushedUndo.current = true;
+    pushUndoGroup([preimage.id], "Cambios guardados.", preimage);
   }
 
   // Any edit close (cancel, Esc, save, confirmed discard) returns focus to
@@ -272,6 +320,14 @@ export function PadronView({
 
   useEffect(() => {
     if (editingId !== null) return;
+    if (savePushedUndo.current) {
+      // A Guardar just pushed its undo group: the undo effect above already
+      // focused the newest Deshacer. Drop the stale return target so the
+      // next close starts clean.
+      savePushedUndo.current = false;
+      pendingCancelFocusId.current = null;
+      return;
+    }
     const id = pendingCancelFocusId.current;
     pendingCancelFocusId.current = null;
     if (id === null) return;
@@ -756,6 +812,7 @@ export function PadronView({
                   discardSignal={discardSignal}
                   onDirtyChange={setEditDirty}
                   onDone={() => closeEditing(p.id)}
+                  onSaved={handleEditSaved}
                   onDiscardConfirm={() => handleDiscardConfirm(p.id)}
                   onDiscardDisarm={handleDiscardDisarm}
                 />
@@ -927,6 +984,7 @@ function PadronEditRow({
   discardSignal,
   onDirtyChange,
   onDone,
+  onSaved,
   onDiscardConfirm,
   onDiscardDisarm,
 }: {
@@ -937,6 +995,9 @@ function PadronEditRow({
   discardSignal: number;
   onDirtyChange: (dirty: boolean) => void;
   onDone: () => void;
+  // Fires after a successful Guardar with the pre-save values so the
+  // parent can push an edit-preimage undo group. Never fires on discard.
+  onSaved?: (preimage: EditPreimage) => void;
   onDiscardConfirm: () => void;
   onDiscardDisarm: () => void;
 }) {
@@ -1087,6 +1148,14 @@ function PadronEditRow({
     setEdadError(null);
     setHbError(null);
     setDupWarning(null);
+    // Snapshot BEFORE the commit (paciente is still the pre-save row here):
+    // the parent pushes it as an edit-preimage undo group.
+    onSaved?.({
+      id: paciente.id,
+      nombre: paciente.nombre,
+      edadMeses: paciente.edadMeses,
+      nivelHemoglobina: paciente.nivelHemoglobina,
+    });
     onDone();
   }
 

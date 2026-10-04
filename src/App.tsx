@@ -111,7 +111,9 @@ export default function App() {
           {tab === "padron" && (
             <PadronView onEmptyRegister={() => setTab("register")} />
           )}
-          {tab === "dashboard" && <DashboardView />}
+          {tab === "dashboard" && (
+            <DashboardView onEmptyRegister={() => setTab("register")} />
+          )}
         </div>
       </SidebarInset>
     </SidebarProvider>

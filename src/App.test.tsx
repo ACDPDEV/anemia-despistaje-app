@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "./stores/padronStore";
+import { useRegisterDraftStore } from "./stores/registerDraftStore";
 import { resetSupabaseClientForTests } from "./lib/supabase";
 import App from "./App";
 
@@ -52,6 +53,7 @@ beforeEach(() => {
   resetSupabaseClientForTests();
   localStorage.clear();
   usePadronStore.getState().reset();
+  useRegisterDraftStore.getState().clearDraft();
   setDesktopViewport();
 });
 
@@ -135,6 +137,19 @@ describe("App sidebar shell", () => {
     fireEvent.click(within(nav).getByRole("button", { name: /padrón/i }));
     fireEvent.click(screen.getByRole("button", { name: /registrar paciente/i }));
     expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
+  });
+
+  it("navigates back to registro from the empty dashboard call-to-action", () => {
+    render(<App />);
+    const nav = screen.getByRole("navigation");
+    fireEvent.click(within(nav).getByRole("button", { name: /panel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /registrar paciente/i }));
+    expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
+    expect(
+      within(nav).getByRole("button", { name: /registro/i }).getAttribute(
+        "aria-current",
+      ),
+    ).toBe("page");
   });
 
   it("collapses to icons and expands back, keeping nav functional", () => {

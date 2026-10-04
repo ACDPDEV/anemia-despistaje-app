@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
+import { useRegisterDraftStore } from "../stores/registerDraftStore";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
 import { RegisterForm } from "./RegisterForm";
 
 beforeEach(() => {
   localStorage.clear();
   usePadronStore.getState().reset();
+  useRegisterDraftStore.getState().clearDraft();
 });
 
 function fillAndSubmit(nombre: string, edad: string, hb: string) {
@@ -230,5 +232,59 @@ describe("RegisterForm", () => {
     expect(screen.getByText(/paciente registrado/i)).toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(document.activeElement).toBe(screen.getByLabelText(/nombre/i));
+  });
+});
+
+describe("RegisterForm draft persistence (P2-1)", () => {
+  function typeDraft(nombre: string, edad: string, hb: string) {
+    fireEvent.change(screen.getByLabelText(/nombre/i), {
+      target: { value: nombre },
+    });
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: edad },
+    });
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: hb },
+    });
+  }
+
+  it("keeps the draft across a tab switch (unmount/remount) without registering", () => {
+    const { unmount } = render(<RegisterForm />);
+    typeDraft("Ana Tor", "2", "11");
+    // Switching to Padrón/Panel unmounts the form: the draft must survive.
+    unmount();
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
+    render(<RegisterForm />);
+    expect(screen.getByLabelText(/nombre/i)).toHaveValue("Ana Tor");
+    expect(screen.getByLabelText(/edad/i)).toHaveValue("2");
+    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue("11");
+  });
+
+  it("clears the draft after a successful register so it never replays", () => {
+    render(<RegisterForm />);
+    fillAndSubmit("Ana Torres", "24", "12.0");
+    expect(usePadronStore.getState().pacientes).toHaveLength(1);
+    expect(useRegisterDraftStore.getState()).toMatchObject({
+      nombre: "",
+      edad: "",
+      hb: "",
+    });
+  });
+
+  it("restores the draft after a reload from persisted storage", async () => {
+    const { unmount } = render(<RegisterForm />);
+    typeDraft("Ana Torres", "24", "12.0");
+    unmount();
+    const raw = localStorage.getItem("register-draft-storage");
+    expect(raw).toContain("Ana Torres");
+    // Fresh-process memory: wipe in-memory state, then restore the storage
+    // snapshot (the wipe itself persists, so the snapshot goes back after).
+    useRegisterDraftStore.setState({ nombre: "", edad: "", hb: "" });
+    localStorage.setItem("register-draft-storage", raw!);
+    await useRegisterDraftStore.persist.rehydrate();
+    render(<RegisterForm />);
+    expect(screen.getByLabelText(/nombre/i)).toHaveValue("Ana Torres");
+    expect(screen.getByLabelText(/edad/i)).toHaveValue("24");
+    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue("12.0");
   });
 });
