@@ -128,7 +128,9 @@ describe("PadronView", () => {
   it("shows the Moderada + Severa alert count", () => {
     seedTriage();
     render(<PadronView />);
-    expect(screen.getByText(/moderada \+ severa: 1/i)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /moderada \+ severa: 1/i,
+    );
   });
 
   it("badges every row that shares a normalized name", () => {
@@ -149,5 +151,121 @@ describe("PadronView", () => {
     });
     expect(screen.getByText("José")).toBeInTheDocument();
     expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
+  });
+});
+
+describe("PadronView export actions", () => {
+  function readBlobText(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(blob);
+    });
+  }
+
+  function mockDownloadSeam() {
+    const seen: { blob: Blob | null; url: string | null } = {
+      blob: null,
+      url: null,
+    };
+    const clicks: string[] = [];
+    (
+      globalThis.URL as unknown as Record<string, unknown>
+    ).createObjectURL = (blob: Blob) => {
+      seen.blob = blob;
+      seen.url = "blob:mock-csv";
+      return "blob:mock-csv";
+    };
+    (
+      globalThis.URL as unknown as Record<string, unknown>
+    ).revokeObjectURL = () => {};
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function (this: HTMLAnchorElement) {
+        clicks.push(this.download);
+      },
+    );
+    return { seen, clicks };
+  }
+
+  it("always renders Exportar CSV and Imprimir beside the table", () => {
+    seedTwo();
+    render(<PadronView />);
+    expect(
+      screen.getByRole("button", { name: /exportar csv/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /imprimir/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("disables both actions when the filter matches no row", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "zzz" },
+    });
+    expect(
+      screen.getByRole("button", { name: /exportar csv/i }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: /imprimir/i })).toBeDisabled();
+  });
+
+  it("renders both actions disabled with the empty state and downloads nothing", () => {
+    const { clicks } = mockDownloadSeam();
+    render(<PadronView />);
+    expect(screen.getByText(/no hay pacientes registrados/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /exportar csv/i }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: /imprimir/i })).toBeDisabled();
+    expect(clicks).toHaveLength(0);
+  });
+
+  it("exports the visible rows through the Blob/URL seam with a dated filename", async () => {
+    const { buildPadronCsv, padronFilename } = await import(
+      "../lib/padronExport"
+    );
+    seedTwo();
+    const { seen, clicks } = mockDownloadSeam();
+    render(<PadronView />);
+    fireEvent.click(screen.getByRole("button", { name: /exportar csv/i }));
+    expect(seen.blob).toBeInstanceOf(Blob);
+    const text = await readBlobText(seen.blob!);
+    const expected = buildPadronCsv(
+      usePadronStore.getState().pacientes,
+      new Date(),
+    );
+    // FileReader strips the BOM on decode; byte size proves it survived.
+    expect(text).toBe(expected.replace(/^\uFEFF/, ""));
+    expect(seen.blob!.size).toBe(new Blob([expected]).size);
+    expect(clicks).toEqual([padronFilename(new Date())]);
+  });
+
+  it("exports only the filtered visible rows", async () => {
+    seedTwo();
+    const { seen } = mockDownloadSeam();
+    render(<PadronView />);
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "ana" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /exportar csv/i }));
+    const text = await readBlobText(seen.blob!);
+    expect(text).toContain("Ana Torres");
+    expect(text).not.toContain("Luis Paz");
+    expect(text).toContain("# total: 1");
+  });
+
+  it("calls window.print when Imprimir activates", () => {
+    seedTwo();
+    const printSpy = vi.fn();
+    Object.defineProperty(window, "print", {
+      value: printSpy,
+      configurable: true,
+      writable: true,
+    });
+    render(<PadronView />);
+    fireEvent.click(screen.getByRole("button", { name: /imprimir/i }));
+    expect(printSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -128,3 +128,16 @@
     @apply font-sans;
     }
 }
+
+/* Padrón print report: table + stats header only. Filters, action
+   buttons, and the row-action column stay on screen but never on paper. */
+@media print {
+  .padron-filters,
+  .padron-actions,
+  .padron-action-col {
+    display: none !important;
+  }
+  .padron-print-header {
+    display: block !important;
+  }
+}

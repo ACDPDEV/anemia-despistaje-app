@@ -6,6 +6,7 @@ import {
   type Paciente,
 } from "../stores/padronStore";
 import { normalizeNombre } from "../lib/normalize";
+import { buildPadronCsv, padronFilename } from "../lib/padronExport";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -37,7 +38,17 @@ export function PadronView({
   if (pacientes.length === 0) {
     return (
       <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
+          <div className="padron-actions flex gap-2">
+            <Button type="button" disabled>
+              Exportar CSV
+            </Button>
+            <Button type="button" variant="outline" disabled>
+              Imprimir
+            </Button>
+          </div>
+        </div>
         <p className="text-sm text-muted-foreground">
           No hay pacientes registrados.
         </p>
@@ -67,46 +78,101 @@ export function PadronView({
   const moderateSevere =
     counts["Anemia Moderada"] + counts["Anemia Severa"];
 
+  // Stats over the visible set feed both the print header and the CSV.
+  const visibleModerateSevere = visible.filter(
+    (p) => p.diagnostico === "Anemia Moderada" || p.diagnostico === "Anemia Severa",
+  ).length;
+  const visibleAverageHb =
+    visible.length === 0
+      ? 0
+      : visible.reduce((sum, p) => sum + p.nivelHemoglobina, 0) /
+        visible.length;
+  const now = new Date();
+  const todayStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  function handleExport() {
+    if (visible.length === 0) return;
+    const csv = buildPadronCsv(visible, new Date());
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = padronFilename(new Date());
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
-    <section className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
+    <section className="padron-section flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
+        <div className="padron-actions flex gap-2">
+          <Button
+            type="button"
+            onClick={handleExport}
+            disabled={visible.length === 0}
+          >
+            Exportar CSV
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => window.print()}
+            disabled={visible.length === 0}
+          >
+            Imprimir
+          </Button>
+        </div>
+      </div>
+      <div className="padron-print-header hidden print:block">
+        <p className="text-lg font-semibold">
+          Padrón de pacientes — {todayStamp}
+        </p>
+        <p className="text-sm">
+          Total: {visible.length} · Moderada + Severa:{" "}
+          {visibleModerateSevere} · Promedio Hb: {visibleAverageHb.toFixed(1)}{" "}
+          g/dL
+        </p>
+      </div>
       <p role="status" className="text-sm text-muted-foreground">
         Moderada + Severa: {moderateSevere}
       </p>
-      <div>
-        <label
-          htmlFor="padron-filter"
-          className="block text-sm font-medium"
-        >
-          Buscar por nombre
-        </label>
-        <Input
-          id="padron-filter"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Buscar por nombre…"
-          className="mt-1"
-        />
+      <div className="padron-filters flex flex-col gap-4">
+        <div>
+          <label
+            htmlFor="padron-filter"
+            className="block text-sm font-medium"
+          >
+            Buscar por nombre
+          </label>
+          <Input
+            id="padron-filter"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Buscar por nombre…"
+            className="mt-1"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="graves-primero"
+            checked={gravesPrimero}
+            onChange={(e) => setGravesPrimero(e.target.checked)}
+          />
+          <label htmlFor="graves-primero" className="text-sm font-medium">
+            Ver graves primero
+          </label>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="graves-primero"
-          checked={gravesPrimero}
-          onChange={(e) => setGravesPrimero(e.target.checked)}
-        />
-        <label htmlFor="graves-primero" className="text-sm font-medium">
-          Ver graves primero
-        </label>
-      </div>
-      <Table>
+      <Table className="padron-table">
         <TableHeader>
           <TableRow>
             <TableHead>Nombre</TableHead>
             <TableHead>Edad (meses)</TableHead>
             <TableHead>Hemoglobina (g/dL)</TableHead>
             <TableHead>Diagnóstico</TableHead>
-            <TableHead>
+            <TableHead className="padron-action-col">
               <span className="sr-only">Acciones</span>
             </TableHead>
           </TableRow>
@@ -167,7 +233,7 @@ function PadronRow({
           )}
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="padron-action-col">
         <div className="flex gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onEdit}>
             Editar

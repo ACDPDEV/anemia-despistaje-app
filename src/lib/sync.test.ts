@@ -85,6 +85,8 @@ afterEach(() => {
 
 describe("supabase lazy client (deferred-safe)", () => {
   it("is a no-op without credentials: null client, not configured, no client created", () => {
+    vi.stubEnv("VITE_SUPABASE_URL", "");
+    vi.stubEnv("VITE_SUPABASE_ANON_KEY", "");
     expect(isSupabaseConfigured()).toBe(false);
     expect(getSupabaseClient()).toBeNull();
     expect(mockedCreateClient).not.toHaveBeenCalled();
