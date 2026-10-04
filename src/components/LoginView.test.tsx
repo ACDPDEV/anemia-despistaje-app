@@ -18,23 +18,10 @@ describe("LoginView", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the Continuar con Google button when auth is configured", () => {
-    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
-    render(<LoginView />);
-    const google = screen.getByRole("button", {
-      name: /continuar con google/i,
-    });
-    expect(google).toBeInTheDocument();
-    expect(google).toBeEnabled();
-  });
-
   it("renders the offline/local-only notice when unconfigured", () => {
     vi.spyOn(auth, "isAuthConfigured").mockReturnValue(false);
     render(<LoginView />);
     expect(screen.queryByLabelText(/correo/i)).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /continuar con google/i }),
-    ).not.toBeInTheDocument();
     expect(screen.getByText(/sin conexión en este equipo/i)).toBeInTheDocument();
   });
 
@@ -68,54 +55,5 @@ describe("LoginView", () => {
     fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/obligatorios/);
     expect(spy).not.toHaveBeenCalled();
-  });
-
-  it("calls signInWithGoogle and disables the button while pending", async () => {
-    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
-    let resolveOAuth!: (value: { ok: boolean }) => void;
-    const spy = vi
-      .spyOn(auth, "signInWithGoogle")
-      .mockReturnValue(
-        new Promise((resolve) => (resolveOAuth = resolve)) as Promise<{
-          ok: boolean;
-        }>,
-      );
-    render(<LoginView />);
-
-    const google = screen.getByRole("button", {
-      name: /continuar con google/i,
-    });
-    fireEvent.click(google);
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(google).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: /iniciar sesión/i }),
-    ).toBeDisabled();
-
-    resolveOAuth({ ok: true });
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /continuar con google/i }),
-      ).toBeEnabled(),
-    );
-  });
-
-  it("shows a role=alert error when Google sign-in fails", async () => {
-    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
-    vi.spyOn(auth, "signInWithGoogle").mockResolvedValue({
-      ok: false,
-      error: "No se pudo iniciar sesión con Google.",
-    });
-    render(<LoginView />);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /continuar con google/i }),
-    );
-
-    await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /no se pudo iniciar sesión con google/i,
-      ),
-    );
   });
 });

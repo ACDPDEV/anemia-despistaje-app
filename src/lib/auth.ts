@@ -10,10 +10,6 @@ export type AuthClient = {
     email: string;
     password: string;
   }) => Promise<{ data: unknown; error: { message: string } | null }>;
-  signInWithOAuth: (args: {
-    provider: "google";
-    options?: { redirectTo?: string };
-  }) => Promise<{ data: unknown; error: { message: string } | null }>;
   signOut: () => Promise<{ error: { message: string } | null }>;
   getSession: () => Promise<{
     data: { session: Session | null };
@@ -70,36 +66,6 @@ export async function signOut(
   if (!client) return;
   const { error } = await client.auth.signOut();
   if (error) throw new Error(error.message);
-}
-
-// Google sign-in via Supabase OAuth. The browser redirects to Google and back
-// to `redirectTo`; the existing onAuthStateChange machinery picks up the
-// session on the return trip, so there is nothing else to wire here.
-//
-// LIVE PREREQUISITE (not code): enable the Google provider in the Supabase
-// dashboard (Authentication → Providers → Google) with a Google Cloud OAuth
-// client before live use; otherwise signInWithOAuth fails at runtime.
-//
-// TAURI CAVEAT (remaining blocker, do NOT work around here): the Tauri
-// desktop build has no http(s) origin to redirect back to, so OAuth needs
-// deep-link handling (tauri-plugin-deep-link / opener with a custom scheme
-// registered as redirect URL) before live verification on desktop. Web dev
-// (`window.location.origin` redirect) works as-is.
-export async function signInWithGoogle(
-  explicit?: SupabaseLike | null,
-): Promise<{ ok: boolean; error?: string }> {
-  const client = resolveClient(explicit);
-  if (!client)
-    return {
-      ok: false,
-      error: "La autenticación no está configurada en este equipo.",
-    };
-  const { error } = await client.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: window.location.origin },
-  });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true };
 }
 
 export function onAuthStateChange(

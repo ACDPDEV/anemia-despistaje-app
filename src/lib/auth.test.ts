@@ -10,7 +10,6 @@ import {
   getSession,
   isAuthConfigured,
   onAuthStateChange,
-  signInWithGoogle,
   signInWithPassword,
   signOut,
 } from "./auth";
@@ -22,10 +21,6 @@ function makeFakeAuth(overrides: Record<string, unknown> = {}) {
   return {
     signInWithPassword: vi.fn(async () => ({
       data: { session: { access_token: "tok" } },
-      error: null,
-    })),
-    signInWithOAuth: vi.fn(async () => ({
-      data: { provider: "google" },
       error: null,
     })),
     signOut: vi.fn(async () => ({ error: null })),
@@ -137,32 +132,5 @@ describe("auth module", () => {
     captured?.("SIGNED_IN", { access_token: "tok" });
     captured?.("SIGNED_OUT", null);
     expect(seen).toEqual([{ access_token: "tok" }, null]);
-  });
-
-  it("signs in with Google via OAuth redirecting to the app origin", async () => {
-    const fake = makeFakeAuth();
-    const result = await signInWithGoogle({ auth: fake } as never);
-    expect(result).toEqual({ ok: true });
-    expect(fake.signInWithOAuth).toHaveBeenCalledWith({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-  });
-
-  it("surfaces Google OAuth failures and unconfigured client in Spanish", async () => {
-    const failing = makeFakeAuth({
-      signInWithOAuth: vi.fn(async () => ({
-        data: {},
-        error: { message: "Provider not enabled" },
-      })),
-    });
-    await expect(
-      signInWithGoogle({ auth: failing } as never),
-    ).resolves.toEqual({ ok: false, error: "Provider not enabled" });
-
-    await expect(signInWithGoogle(null)).resolves.toEqual({
-      ok: false,
-      error: "La autenticación no está configurada en este equipo.",
-    });
   });
 });
