@@ -9,6 +9,7 @@ import { normalizeNombre } from "../lib/normalize";
 import { buildPadronCsv, padronFilename } from "../lib/padronExport";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Field, FieldError, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import {
   Table,
@@ -364,25 +365,37 @@ function PadronEditRow({
   const [nombre, setNombre] = useState(paciente.nombre);
   const [edad, setEdad] = useState(String(paciente.edadMeses));
   const [hb, setHb] = useState(String(paciente.nivelHemoglobina));
-  const [error, setError] = useState<string | null>(null);
+  const [nombreError, setNombreError] = useState<string | null>(null);
+  const [edadError, setEdadError] = useState<string | null>(null);
+  const [hbError, setHbError] = useState<string | null>(null);
+
+  // Per-field validation mirrors RegisterForm: same clinical copy, each
+  // Input pointing at its own error id, invalid flag only on offenders.
+  const nombreErrorId = `nombre-${paciente.id}-error`;
+  const edadErrorId = `edad-${paciente.id}-error`;
+  const hbErrorId = `hb-${paciente.id}-error`;
 
   function handleSave() {
     const edadMeses = Number(edad);
     const nivelHemoglobina = Number(hb);
-    if (nombre.trim().length === 0) {
-      setError("El nombre del paciente es obligatorio.");
-      return;
-    }
-    if (!Number.isInteger(edadMeses) || edadMeses < 6 || edadMeses > 59) {
-      setError("La edad debe estar entre 6 y 59 meses.");
-      return;
-    }
-    if (!Number.isFinite(nivelHemoglobina) || nivelHemoglobina <= 0) {
-      setError("El nivel de hemoglobina debe ser mayor que 0.");
-      return;
-    }
+    const nextNombreError =
+      nombre.trim().length === 0 ? "El nombre del paciente es obligatorio." : null;
+    const nextEdadError =
+      !Number.isInteger(edadMeses) || edadMeses < 6 || edadMeses > 59
+        ? "La edad debe estar entre 6 y 59 meses."
+        : null;
+    const nextHbError =
+      !Number.isFinite(nivelHemoglobina) || nivelHemoglobina <= 0
+        ? "El nivel de hemoglobina debe ser mayor que 0."
+        : null;
+    setNombreError(nextNombreError);
+    setEdadError(nextEdadError);
+    setHbError(nextHbError);
+    if (nextNombreError || nextEdadError || nextHbError) return;
     update(paciente.id, { nombre: nombre.trim(), edadMeses, nivelHemoglobina });
-    setError(null);
+    setNombreError(null);
+    setEdadError(null);
+    setHbError(null);
     onDone();
   }
 
@@ -393,55 +406,59 @@ function PadronEditRow({
           <p className="text-sm font-medium">
             Editando a {paciente.nombre}
           </p>
-          <div>
-            <label
-              htmlFor={`nombre-${paciente.id}`}
-              className="block text-sm font-medium"
-            >
-              Nombre
-            </label>
+          <Field data-invalid={nombreError ? true : undefined}>
+            <FieldLabel htmlFor={`nombre-${paciente.id}`}>Nombre</FieldLabel>
             <Input
               id={`nombre-${paciente.id}`}
               value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
+              onChange={(e) => {
+                setNombre(e.target.value);
+                if (nombreError) setNombreError(null);
+              }}
+              aria-invalid={nombreError ? true : undefined}
+              aria-describedby={nombreError ? nombreErrorId : undefined}
               className="mt-1"
             />
-          </div>
-          <div>
-            <label
-              htmlFor={`edad-${paciente.id}`}
-              className="block text-sm font-medium"
-            >
+            {nombreError && (
+              <FieldError id={nombreErrorId}>{nombreError}</FieldError>
+            )}
+          </Field>
+          <Field data-invalid={edadError ? true : undefined}>
+            <FieldLabel htmlFor={`edad-${paciente.id}`}>
               Edad (meses)
-            </label>
+            </FieldLabel>
             <Input
               id={`edad-${paciente.id}`}
               inputMode="numeric"
               value={edad}
-              onChange={(e) => setEdad(e.target.value)}
+              onChange={(e) => {
+                setEdad(e.target.value);
+                if (edadError) setEdadError(null);
+              }}
+              aria-invalid={edadError ? true : undefined}
+              aria-describedby={edadError ? edadErrorId : undefined}
               className="mt-1"
             />
-          </div>
-          <div>
-            <label
-              htmlFor={`hb-${paciente.id}`}
-              className="block text-sm font-medium"
-            >
+            {edadError && <FieldError id={edadErrorId}>{edadError}</FieldError>}
+          </Field>
+          <Field data-invalid={hbError ? true : undefined}>
+            <FieldLabel htmlFor={`hb-${paciente.id}`}>
               Hemoglobina (g/dL)
-            </label>
+            </FieldLabel>
             <Input
               id={`hb-${paciente.id}`}
               inputMode="decimal"
               value={hb}
-              onChange={(e) => setHb(e.target.value)}
+              onChange={(e) => {
+                setHb(e.target.value);
+                if (hbError) setHbError(null);
+              }}
+              aria-invalid={hbError ? true : undefined}
+              aria-describedby={hbError ? hbErrorId : undefined}
               className="mt-1"
             />
-          </div>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
+            {hbError && <FieldError id={hbErrorId}>{hbError}</FieldError>}
+          </Field>
           <div className="flex gap-2">
             <Button type="button" size="sm" onClick={handleSave}>
               Guardar

@@ -231,6 +231,17 @@ export function DashboardView() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <div
+            data-testid="hb-legend"
+            aria-label="Leyenda de severidad"
+            className="mt-2 flex flex-wrap gap-1.5"
+          >
+            {BANDS.map((band) => (
+              <Badge key={band} variant={DIAGNOSIS_BADGE[band]}>
+                {band}
+              </Badge>
+            ))}
+          </div>
           <table data-testid="hb-data-table" className="sr-only">
             <caption>Distribución de hemoglobina por diagnóstico</caption>
             <tbody>
@@ -265,6 +276,17 @@ export function DashboardView() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+          </div>
+          <div
+            data-testid="age-legend"
+            aria-label="Leyenda de severidad"
+            className="mt-2 flex flex-wrap gap-1.5"
+          >
+            {BANDS.map((band) => (
+              <Badge key={band} variant={DIAGNOSIS_BADGE[band]}>
+                {band}
+              </Badge>
+            ))}
           </div>
           <table data-testid="age-data-table" className="sr-only">
             <caption>Riesgo por grupo de edad, con el peor caso observado</caption>

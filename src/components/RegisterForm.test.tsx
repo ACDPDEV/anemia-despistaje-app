@@ -103,8 +103,21 @@ describe("RegisterForm", () => {
       .add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
     render(<RegisterForm />);
     fillAndSubmit("maria lopez", "24", "12.0");
-    expect(screen.getByText(/posible duplicado/i)).toBeInTheDocument();
+    const warning = screen.getByText(/posible duplicado/i);
+    expect(warning).toBeInTheDocument();
+    expect(warning.className).toMatch(/text-warning/);
+    expect(warning.className).not.toMatch(/amber-700/);
     expect(usePadronStore.getState().pacientes).toHaveLength(2);
+  });
+
+  it("announces the registration confirmation as a status with a theme token", () => {
+    render(<RegisterForm />);
+    fillAndSubmit("Ana Torres", "24", "12.0");
+
+    const confirmation = screen.getByRole("status");
+    expect(confirmation).toHaveTextContent(/paciente registrado/i);
+    expect(confirmation.className).toMatch(/text-success/);
+    expect(confirmation.className).not.toMatch(/green-700/);
   });
 
   it("dismisses the duplicate hint without losing the registration", () => {

@@ -244,6 +244,35 @@ describe("PadronView", () => {
     expect(screen.getAllByText(/posible duplicado/i)).toHaveLength(2);
   });
 
+  it("flags only the offending edit-row field with a wired describedby", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+
+    // Break only edad: nombre and hb stay valid and unwired.
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+
+    const edad = screen.getByLabelText(/edad/i);
+    const nombre = screen.getByLabelText(/^nombre/i);
+    const hb = screen.getByLabelText(/hemoglobina/i);
+    expect(edad).toHaveAttribute("aria-invalid", "true");
+    const describedBy = edad.getAttribute("aria-describedby")!;
+    expect(describedBy).toMatch(/edad-.*-error/);
+    expect(document.getElementById(describedBy)).toHaveTextContent(
+      "La edad debe estar entre 6 y 59 meses.",
+    );
+    expect(nombre).not.toHaveAttribute("aria-invalid");
+    expect(nombre).not.toHaveAttribute("aria-describedby");
+    expect(hb).not.toHaveAttribute("aria-invalid");
+    expect(hb).not.toHaveAttribute("aria-describedby");
+    // No edit happens while invalid.
+    expect(usePadronStore.getState().pacientes[0].edadMeses).toBe(24);
+  });
+
   it("matches accented names from an unaccented filter", () => {
     const { add } = usePadronStore.getState();
     add({ nombre: "José", edadMeses: 24, nivelHemoglobina: 12.0 });

@@ -85,6 +85,19 @@ describe("DashboardView", () => {
     expect(within(chart).getByText("2")).toBeInTheDocument();
   });
 
+  it("renders a 4-chip severity legend under each chart", () => {
+    seedPadron();
+    render(<DashboardView />);
+
+    for (const testId of ["hb-legend", "age-legend"]) {
+      const legend = screen.getByTestId(testId);
+      for (const band of HB_BANDS) {
+        expect(within(legend).getByText(band)).toBeInTheDocument();
+      }
+      expect(legend.className).toMatch(/flex-wrap/);
+    }
+  });
+
   it("leads with a triage sentence ahead of the KPI cards", () => {
     seedPadron();
     render(<DashboardView />);

@@ -142,7 +142,7 @@ describe("App sidebar shell", () => {
     const sidebar = container.querySelector('[data-slot="sidebar"]');
     expect(sidebar?.getAttribute("data-state")).toBe("expanded");
 
-    fireEvent.click(screen.getByRole("button", { name: /toggle sidebar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /alternar barra lateral/i }));
     expect(
       container.querySelector('[data-slot="sidebar"]')?.getAttribute(
         "data-state",
@@ -154,7 +154,7 @@ describe("App sidebar shell", () => {
     expect(screen.getByRole("button", { name: /registrar paciente/i }))
       .toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /toggle sidebar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /alternar barra lateral/i }));
     expect(
       container.querySelector('[data-slot="sidebar"]')?.getAttribute(
         "data-state",
@@ -166,7 +166,7 @@ describe("App sidebar shell", () => {
     setViewport(375, true);
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: /toggle sidebar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /alternar barra lateral/i }));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(
       within(dialog).getByRole("button", { name: /padrón/i }),

@@ -126,13 +126,13 @@ export function RegisterForm() {
         </p>
       )}
       {lastDiagnosis && (
-        <p className="text-sm text-green-700">
+        <p role="status" className="text-sm text-success">
           Paciente registrado: <strong>{lastDiagnosis}</strong>
         </p>
       )}
       {duplicateWarning && (
         <div className="flex items-center gap-2">
-          <p className="text-sm text-amber-700">{duplicateWarning}</p>
+          <p className="text-sm text-warning">{duplicateWarning}</p>
           <Button
             type="button"
             variant="outline"
