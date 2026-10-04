@@ -52,3 +52,7 @@ El padrón local (Zustand + localStorage) es la fuente de verdad; Supabase es un
 
 - Modo oscuro/claro obligatorio (tokens de tema, no colores hardcodeados).
 - Labels asociados a inputs, errores con `role=alert` y `aria-describedby` cableado en Nombre/Edad/Hb (create form y edit row); los tres hints siempre están en el describedby, los errores se añaden al fallar.
+
+## Known Decisions (critique pins)
+
+- **Auth gate offline (login/sync run-1 P1, decided):** when auth is configured, an unauthenticated device without signal cannot enter the shell. Principle 1 applies past the gate, not on it; the login card shows an honest offline notice instead of a bypass. A "continue without signing in" escape is rejected for now: unauthenticated records have no owner, which conflicts with the per-user RLS model (migration gated). Revisit trigger: a field report of a jornada starting on a fresh device with no signal, or the RLS model gaining an explicit unowned/device-local claim path. Do not re-flag this as a P1 without that evidence.

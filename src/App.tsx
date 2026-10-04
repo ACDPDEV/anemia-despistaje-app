@@ -137,6 +137,10 @@ export default function App() {
     // title), body owns the form. No offline-first reassurance line: at
     // this gate sign-in is still required, so that promise would be false
     // here (PRODUCT.md principle 1 applies past the gate, not on it).
+    // Deliberate pin (login/sync run-1 P1, decided — see PRODUCT.md
+    // "Known Decisions"): no bypass; unauthenticated records would have no
+    // owner under the per-user RLS model. LoginView renders an honest
+    // offline notice instead.
     return (
       <main className="mx-auto flex w-full max-w-md flex-col gap-4 p-6">
         <Card>
