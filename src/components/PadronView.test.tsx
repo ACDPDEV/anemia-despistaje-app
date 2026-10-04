@@ -192,6 +192,19 @@ describe("PadronView", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders graves-first as a design-system checkbox with label association", () => {
+    seedTwo();
+    render(<PadronView />);
+    const toggle = screen.getByRole("checkbox", { name: /graves primero/i });
+    // Native input restyled with theme tokens, not a raw checkbox.
+    expect(toggle).toHaveAttribute("data-slot", "checkbox");
+    expect(toggle.tagName).toBe("INPUT");
+    // Label association survives the swap.
+    expect(screen.getByLabelText(/graves primero/i)).toBe(toggle);
+    // 44px touch hit area comes from the label row on coarse pointers.
+    expect(toggle.closest("label")?.className).toMatch(/pointer-coarse:min-h-11/);
+  });
+
   it("lists patients in registration order while graves-first is off", () => {
     seedTriage();
     render(<PadronView />);

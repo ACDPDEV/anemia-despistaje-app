@@ -49,6 +49,14 @@ describe("RegisterForm", () => {
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
 
+  it("hints first-timers with calm one-line field help", () => {
+    render(<RegisterForm />);
+    expect(screen.getByText("6 a 59 meses")).toBeInTheDocument();
+    expect(
+      screen.getByText("Valor del hemoglobinómetro, ej. 11.5"),
+    ).toBeInTheDocument();
+  });
+
   it("flags only the offending field with a wired aria-describedby", () => {
     render(<RegisterForm />);
     fillAndSubmit("", "24", "12.0");
@@ -62,17 +70,19 @@ describe("RegisterForm", () => {
     expect(nombre).toHaveAttribute("aria-describedby", "nombre-error");
     expect(screen.getByRole("alert")).toHaveAttribute("id", "nombre-error");
     expect(edad).not.toHaveAttribute("aria-invalid");
-    expect(edad).not.toHaveAttribute("aria-describedby");
+    // Edad and Hb always carry their calm one-line hints.
+    expect(edad).toHaveAttribute("aria-describedby", "edad-hint");
     expect(hb).not.toHaveAttribute("aria-invalid");
-    expect(hb).not.toHaveAttribute("aria-describedby");
+    expect(hb).toHaveAttribute("aria-describedby", "hb-hint");
 
     // Fixing nombre and breaking edad moves the flag, never doubling it.
     fillAndSubmit("Luis Paz", "5", "12.0");
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(screen.getByLabelText(/edad/i)).toHaveAttribute(
-      "aria-describedby",
-      "edad-error",
-    );
+    const edadDescribedBy = screen
+      .getByLabelText(/edad/i)
+      .getAttribute("aria-describedby")!;
+    expect(edadDescribedBy).toContain("edad-hint");
+    expect(edadDescribedBy).toContain("edad-error");
     expect(screen.getByLabelText(/nombre/i)).not.toHaveAttribute(
       "aria-invalid",
     );
@@ -118,6 +128,23 @@ describe("RegisterForm", () => {
     expect(confirmation).toHaveTextContent(/paciente registrado/i);
     expect(confirmation.className).toMatch(/text-success/);
     expect(confirmation.className).not.toMatch(/green-700/);
+  });
+
+  it("announces the duplicate warning as a non-interrupting status", () => {
+    usePadronStore
+      .getState()
+      .add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
+    render(<RegisterForm />);
+    fillAndSubmit("maria lopez", "24", "12.0");
+
+    // Warning, not alert: a status never steals typing focus.
+    const warning = screen
+      .getByText(/posible duplicado/i)
+      .closest('[role="status"]');
+    expect(warning).not.toBeNull();
+    expect(warning!.getAttribute("role")).toBe("status");
+    // Success confirmation and warning coexist as separate statuses.
+    expect(screen.getAllByRole("status")).toHaveLength(2);
   });
 
   it("dismisses the duplicate hint without losing the registration", () => {

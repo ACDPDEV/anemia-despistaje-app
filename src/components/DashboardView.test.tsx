@@ -85,17 +85,71 @@ describe("DashboardView", () => {
     expect(within(chart).getByText("2")).toBeInTheDocument();
   });
 
-  it("renders a 4-chip severity legend under each chart", () => {
+  it("keeps the Hb legend as 4 diagnosis chips (bars ARE diagnoses)", () => {
     seedPadron();
     render(<DashboardView />);
 
-    for (const testId of ["hb-legend", "age-legend"]) {
-      const legend = screen.getByTestId(testId);
-      for (const band of HB_BANDS) {
-        expect(within(legend).getByText(band)).toBeInTheDocument();
-      }
-      expect(legend.className).toMatch(/flex-wrap/);
+    const legend = screen.getByTestId("hb-legend");
+    for (const band of HB_BANDS) {
+      expect(within(legend).getByText(band)).toBeInTheDocument();
     }
+    expect(legend.className).toMatch(/flex-wrap/);
+  });
+
+  it("keys the age chart by worst case instead of diagnosis chips", () => {
+    seedPadron();
+    render(<DashboardView />);
+
+    const legend = screen.getByTestId("age-legend");
+    expect(legend).toHaveTextContent(
+      /el color indica el peor diagnóstico observado en el grupo/i,
+    );
+    // No chip can teach the false bars-are-diagnoses mapping.
+    for (const band of HB_BANDS) {
+      expect(within(legend).queryByText(band)).not.toBeInTheDocument();
+    }
+  });
+
+  it("promotes Moderada + Severa to a hero above the secondary KPIs", () => {
+    seedPadron();
+    render(<DashboardView />);
+
+    const hero = screen.getByTestId("hero-modsev");
+    const heroValue = within(hero).getByTestId("kpi-modsev");
+    expect(heroValue).toHaveTextContent("2");
+    // Hero value reads a full tier above the secondary numbers.
+    expect(heroValue.className).toMatch(/text-4xl/);
+    for (const id of ["kpi-total", "kpi-avg", "kpi-anemia-pct"]) {
+      const secondary = screen.getByTestId(id);
+      expect(secondary.className).toMatch(/text-xl/);
+      expect(secondary.className).not.toMatch(/text-2xl/);
+    }
+    // Reading order: sentence → hero → secondary numbers.
+    const triage = screen.getByTestId("triage-sentence");
+    expect(
+      triage.compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      hero.compareDocumentPosition(screen.getByTestId("kpi-total")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps charts mounted inside a mobile disclosure", () => {
+    seedPadron();
+    render(<DashboardView />);
+
+    const disclosure = screen.getByTestId("charts-disclosure");
+    expect(disclosure.tagName).toBe("DETAILS");
+    expect(within(disclosure).getByTestId("hb-chart")).toBeInTheDocument();
+    expect(within(disclosure).getByTestId("age-chart")).toBeInTheDocument();
+  });
+
+  it("guides first-timers with an empty-dashboard hint", () => {
+    render(<DashboardView />);
+    expect(screen.getByTestId("empty-guide")).toHaveTextContent(
+      /registra tu primer paciente para ver el panel/i,
+    );
   });
 
   it("leads with a triage sentence ahead of the KPI cards", () => {
@@ -213,6 +267,14 @@ describe("DashboardView", () => {
     for (const band of HB_BANDS) {
       expect(within(bandCounts).getByText(band)).toBeInTheDocument();
     }
+    // First-timers get a guide line on top of the calm zero captions.
+    expect(screen.getByTestId("empty-guide")).toBeInTheDocument();
+  });
+
+  it("shows no empty guide once the padron has records", () => {
+    seedPadron();
+    render(<DashboardView />);
+    expect(screen.queryByTestId("empty-guide")).not.toBeInTheDocument();
   });
 });
 

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { findPossibleDuplicates, usePadronStore } from "../stores/padronStore";
 import type { Diagnosis } from "../domain/anemia";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 // Registration form with Spanish labels and validation messages.
@@ -101,8 +101,9 @@ export function RegisterForm() {
               if (edadError) setEdadError(null);
             }}
             aria-invalid={edadError ? true : undefined}
-            aria-describedby={edadError ? "edad-error" : undefined}
+            aria-describedby={edadError ? "edad-hint edad-error" : "edad-hint"}
           />
+          <FieldDescription id="edad-hint">6 a 59 meses</FieldDescription>
           {edadError && <FieldError id="edad-error">{edadError}</FieldError>}
         </Field>
         <Field data-invalid={hbError ? true : undefined}>
@@ -116,8 +117,11 @@ export function RegisterForm() {
               if (hbError) setHbError(null);
             }}
             aria-invalid={hbError ? true : undefined}
-            aria-describedby={hbError ? "hb-error" : undefined}
+            aria-describedby={hbError ? "hb-hint hb-error" : "hb-hint"}
           />
+          <FieldDescription id="hb-hint">
+            Valor del hemoglobinómetro, ej. 11.5
+          </FieldDescription>
           {hbError && <FieldError id="hb-error">{hbError}</FieldError>}
         </Field>
       {formError && (
@@ -131,7 +135,7 @@ export function RegisterForm() {
         </p>
       )}
       {duplicateWarning && (
-        <div className="flex items-center gap-2">
+        <div role="status" className="flex items-center gap-2">
           <p className="text-sm text-warning">{duplicateWarning}</p>
           <Button
             type="button"

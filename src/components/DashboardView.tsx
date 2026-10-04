@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -98,6 +99,20 @@ export function toHbBandData(
   return BANDS.map((band) => ({ band, count: counts[band] }));
 }
 
+// Charts disclosure: collapsed behind a native <details> on phones so the
+// first screen is sentence + hero + numbers; forced open on sm+ via
+// matchMedia (charts stay mounted either way, <details> hides only
+// visually). Unknown viewports (SSR, jsdom) default to open.
+function initialChartsOpen(): boolean {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return true;
+  }
+  return window.matchMedia("(min-width: 640px)").matches;
+}
+
 // Screening overview: KPI cards, Hb distribution bars, and age-group bars.
 // All values derive from visible rows only: tombstones (deletedAt set)
 // are excluded from total, age bands, and (via selectors) counts/average.
@@ -119,6 +134,17 @@ export function DashboardView() {
   const hbData = toHbBandData(counts);
   const ageCounts = groupByAgeBand(pacientes);
   const ageData = AGE_BANDS.map((band) => ({ band, count: ageCounts[band] }));
+  // Reading order is sentence → hero → numbers → charts: the disclosure
+  // below only re-weights, it removes nothing.
+  const [chartsOpen, setChartsOpen] = useState(initialChartsOpen);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(min-width: 640px)");
+    const sync = (event: MediaQueryListEvent) => setChartsOpen(event.matches);
+    query.addEventListener("change", sync);
+    setChartsOpen(query.matches);
+    return () => query.removeEventListener("change", sync);
+  }, []);
   // Bar hue for each age band follows the worst diagnosis seen in that
   // band, so "Riesgo por grupo de edad" encodes risk instead of reusing a
   // neutral token. Boundary mirrors groupByAgeBand (< 24 → "6-23").
@@ -143,14 +169,35 @@ export function DashboardView() {
         {triageSentence(total, moderateSevere)}
       </p>
 
-      <div className="grid grid-cols-2 gap-4">
+      {isEmpty && (
+        <p data-testid="empty-guide" className="text-sm text-muted-foreground">
+          Registra tu primer paciente para ver el panel
+        </p>
+      )}
+
+      <Card data-testid="hero-modsev">
+        <CardHeader>
+          <CardTitle>Moderada + Severa</CardTitle>
+          <CardDescription>{captionFor("modsev", isEmpty)}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p
+            data-testid="kpi-modsev"
+            className="text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl"
+          >
+            {moderateSevere}
+          </p>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Total de pacientes</CardTitle>
             <CardDescription>{captionFor("total", isEmpty)}</CardDescription>
           </CardHeader>
           <CardContent>
-            <p data-testid="kpi-total" className="text-2xl font-semibold">
+            <p data-testid="kpi-total" className="text-xl font-semibold">
               {total}
             </p>
           </CardContent>
@@ -161,7 +208,7 @@ export function DashboardView() {
             <CardDescription>{captionFor("avg", isEmpty)}</CardDescription>
           </CardHeader>
           <CardContent>
-            <p data-testid="kpi-avg" className="text-2xl font-semibold">
+            <p data-testid="kpi-avg" className="text-xl font-semibold">
               {isEmpty ? "—" : `${avg.toFixed(2)} g/dL`}
             </p>
           </CardContent>
@@ -172,19 +219,8 @@ export function DashboardView() {
             <CardDescription>{captionFor("anemia", isEmpty)}</CardDescription>
           </CardHeader>
           <CardContent>
-            <p data-testid="kpi-anemia-pct" className="text-2xl font-semibold">
+            <p data-testid="kpi-anemia-pct" className="text-xl font-semibold">
               {anemiaPct === null ? "—" : `${anemiaPct}%`}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Moderada + Severa</CardTitle>
-            <CardDescription>{captionFor("modsev", isEmpty)}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p data-testid="kpi-modsev" className="text-2xl font-semibold">
-              {moderateSevere}
             </p>
           </CardContent>
         </Card>
@@ -199,7 +235,7 @@ export function DashboardView() {
             <CardContent>
               <p
                 className={cn(
-                  "text-2xl font-semibold",
+                  "text-xl font-semibold",
                   counts[band] === 0 && "text-muted-foreground",
                 )}
               >
@@ -210,7 +246,17 @@ export function DashboardView() {
         ))}
       </div>
 
-      <Card>
+      <details
+        data-testid="charts-disclosure"
+        open={chartsOpen}
+        onToggle={(event) => setChartsOpen(event.currentTarget.open)}
+        className="flex flex-col gap-6"
+      >
+        <summary className="cursor-pointer text-sm font-medium text-primary sm:hidden">
+          Ver gráficos
+        </summary>
+        <div className="flex flex-col gap-6">
+          <Card>
         <CardHeader>
           <CardTitle>Distribución de hemoglobina</CardTitle>
         </CardHeader>
@@ -259,6 +305,9 @@ export function DashboardView() {
       <Card>
         <CardHeader>
           <CardTitle>Riesgo por grupo de edad</CardTitle>
+          <CardDescription data-testid="age-legend">
+            El color indica el peor diagnóstico observado en el grupo
+          </CardDescription>
         </CardHeader>
         <CardContent className="min-w-0">
           <div data-testid="age-chart" className="h-[220px] w-full min-w-0">
@@ -277,17 +326,6 @@ export function DashboardView() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div
-            data-testid="age-legend"
-            aria-label="Leyenda de severidad"
-            className="mt-2 flex flex-wrap gap-1.5"
-          >
-            {BANDS.map((band) => (
-              <Badge key={band} variant={DIAGNOSIS_BADGE[band]}>
-                {band}
-              </Badge>
-            ))}
-          </div>
           <table data-testid="age-data-table" className="sr-only">
             <caption>Riesgo por grupo de edad, con el peor caso observado</caption>
             <tbody>
@@ -302,6 +340,8 @@ export function DashboardView() {
           </table>
         </CardContent>
       </Card>
+        </div>
+      </details>
     </section>
   );
 }

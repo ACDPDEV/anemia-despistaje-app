@@ -9,6 +9,7 @@ import { normalizeNombre } from "../lib/normalize";
 import { buildPadronCsv, padronFilename } from "../lib/padronExport";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { Field, FieldError, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import {
@@ -181,17 +182,17 @@ export function PadronView({
             className="mt-1"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
+        <label
+          htmlFor="graves-primero"
+          className="flex cursor-pointer items-center gap-2 text-sm font-medium pointer-coarse:min-h-11"
+        >
+          <Checkbox
             id="graves-primero"
             checked={gravesPrimero}
             onChange={(e) => setGravesPrimero(e.target.checked)}
           />
-          <label htmlFor="graves-primero" className="text-sm font-medium">
-            Ver graves primero
-          </label>
-        </div>
+          Ver graves primero
+        </label>
       </div>
       <Table className="padron-table">
         <TableHeader>
