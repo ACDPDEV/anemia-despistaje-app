@@ -174,8 +174,12 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
 
   // Icon-only form for the collapsed sidebar: same title composition, a
   // pending-count badge, and an accessible name so the status survives
-  // without the clipped text lines. The accessible name mirrors the full
-  // title (status + receipt), not just the status line.
+  // without the clipped text lines. The accessible name is STATIC (status
+  // text + pending count only, never the ticking receipt): role="status"
+  // re-announces on every accessible-name change, so embedding the receipt
+  // would read "hace 5s… hace 10s…" unattended every tick. The receipt
+  // stays mouse-only in the title tooltip, and on demand in the expanded
+  // receipt line below.
   if (collapsed) {
     const Icon = !online ? CloudOff : syncing ? RefreshCw : Cloud;
     return (
@@ -184,7 +188,7 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
         title={title}
         className="flex justify-center py-1"
       >
-        <span className="relative inline-flex" role="status" aria-label={title}>
+        <span className="relative inline-flex" role="status" aria-label={text}>
           <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
           {pending > 0 && (
             <span
@@ -226,8 +230,9 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
           line above is the chip's single announcer; the receipt re-renders
           on an adaptive tick (every 5s while fresh), so a role="status"
           here would announce "hace 5s… hace 10s…" unattended. Screen
-          readers reach the receipt on demand; the collapsed icon carries
-          the same receipt inside its accessible name. */}
+          readers reach the receipt on demand; the collapsed icon keeps a
+          STATIC accessible name (status text only) for the same reason,
+          with the receipt mouse-only in its title tooltip. */}
       <p
         data-testid="sync-receipt"
         className="truncate text-[11px] text-muted-foreground"

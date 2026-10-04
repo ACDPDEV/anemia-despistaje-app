@@ -4,6 +4,7 @@ import { useSidebar } from "./ui/sidebar";
 import { isAuthConfigured, signOut } from "../lib/auth";
 import { toSpanishErrorMessage } from "../lib/errorMessages";
 import { SyncStatusChip } from "./SyncStatusChip";
+import { ThemeToggle } from "./ThemeToggle";
 import { BrandLockup } from "./BrandLockup";
 import {
   Sidebar,
@@ -41,10 +42,13 @@ type AppSidebarProps = {
 // Sole navigation control. Active state derives from the single TabId source.
 // The header keeps the compact brand lockup (the page h1 owns the full
 // title). The footer answers safety and discoverability: the sync/offline
-// status chip, one visible line naming the Alt+1/2/3 tab shortcuts (the
-// only shortcut source of truth, hidden when collapsed to icon width),
-// plus logout when auth is configured (offline-first local mode shows no
-// logout). The shortcuts line hides when collapsed to icon width, so each
+// status chip, the theme toggle (PRODUCT's required modo oscuro/claro),
+// one task-ordered help disclosure (the only help entry point: registrar →
+// duplicado → sincronizar → imprimir/exportar plus the Alt shortcuts), one
+// visible line naming the Alt+1/2/3 tab shortcuts (the only shortcut source
+// of truth, hidden when collapsed to icon width), plus logout when auth is
+// configured (offline-first local mode shows no logout). The shortcuts
+// line, help, and theme label hide when collapsed to icon width, so each
 // nav button also carries aria-keyshortcuts plus a native title with its
 // shortcut: collapsed icon buttons keep exposing Alt+1/2/3. Sign-out failure stays inline with a retry; success clears via
 // App.tsx onAuthStateChange.
@@ -120,6 +124,21 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
           </p>
         )}
         <SyncStatusChip collapsed={collapsed} />
+        <ThemeToggle />
+        {!collapsed && (
+          <details data-testid="sidebar-help" className="px-2 text-xs text-muted-foreground">
+            <summary className="cursor-pointer font-medium text-foreground pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
+              ¿Cómo funciona?
+            </summary>
+            <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+              <li>Registra al paciente en la pestaña Registro.</li>
+              <li>Revisa el aviso de posible duplicado.</li>
+              <li>Sincroniza cuando tengas conexión.</li>
+              <li>Imprime o exporta desde el Padrón.</li>
+            </ol>
+            <p className="mt-1">Atajos: Alt+1/2/3 cambian de pestaña, Alt+S registra.</p>
+          </details>
+        )}
         {authConfigured && (
           <SidebarMenu>
             <SidebarMenuItem>

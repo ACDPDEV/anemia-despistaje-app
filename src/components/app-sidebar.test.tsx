@@ -81,6 +81,39 @@ describe("AppSidebar nav shortcuts", () => {
   });
 });
 
+describe("AppSidebar footer controls", () => {
+  it("exposes the theme toggle with a Spanish target-mode name", () => {
+    render(
+      <SidebarProvider>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
+    );
+    // matches:false stub above = light default → offers dark.
+    const toggle = screen.getByRole("button", { name: "Modo oscuro" });
+    expect(toggle).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Modo claro" }),
+    ).toBeInTheDocument();
+    document.documentElement.classList.remove("dark");
+  });
+
+  it("offers one task-ordered help entry covering the jornada", () => {
+    render(
+      <SidebarProvider>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
+    );
+    const help = screen.getByTestId("sidebar-help");
+    expect(help).toHaveTextContent(/¿cómo funciona\?/i);
+    for (const step of [/registra/i, /duplicado/i, /sincroniza/i, /imprime/i]) {
+      expect(help).toHaveTextContent(step);
+    }
+    expect(help).toHaveTextContent(/alt\+s/i);
+  });
+});
+
 describe("AppSidebar sign-out tooltip workaround", () => {
   it("keeps the tooltip while idle, drops it while pending, restores it after", async () => {
     mockedAuth.signOut.mockResolvedValue(undefined);

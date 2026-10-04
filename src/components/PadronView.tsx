@@ -11,7 +11,6 @@ import {
 } from "../stores/padronStore";
 import { normalizeNombre } from "../lib/normalize";
 import { buildPadronCsv, padronFilename } from "../lib/padronExport";
-import { formatLastSyncAgo, lastPullAt } from "../lib/syncGuard";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -481,18 +480,20 @@ export function PadronView({
       ? 0
       : visible.reduce((sum, p) => sum + p.nivelHemoglobina, 0) /
         visible.length;
+  // Print-time stamp: print renders from React, so render time IS the
+  // honest generation time for a print-to-PDF flow (documented
+  // assumption). Fecha + hora, never the relative "hace X" receipt: a
+  // frozen relative line on paper would lie within minutes, while the
+  // pending count below is exact at render time.
   const now = new Date();
   const todayStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  // Print-only sync receipt: reuses the chip's formatLastSyncAgo over
-  // syncGuard lastPullAt. No subscription on purpose: the header only
-  // matters at print time and reads the live module binding on each render.
-  // Screen unchanged.
-  const printReceipt =
-    lastPullAt === null
-      ? "Sin sincronizar aún"
-      : formatLastSyncAgo(
-          Math.max(0, Math.floor((Date.now() - lastPullAt) / 1000)),
-        );
+  const printStamp = new Intl.DateTimeFormat("es-PE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(now);
 
   // Bulk scope is always selected ∩ visible: select-all covers the
   // filtered set only, never the whole padrón.
@@ -616,12 +617,12 @@ export function PadronView({
           g/dL
         </p>
         <p className="text-sm">
+          Impreso: {printStamp} ·{" "}
           {pendingSyncCount === 0
             ? "Sin cambios pendientes de sincronización"
             : pendingSyncCount === 1
               ? "1 pendiente por sincronizar"
-              : `${pendingSyncCount} pendientes por sincronizar`}{" "}
-          · {printReceipt}
+              : `${pendingSyncCount} pendientes por sincronizar`}
         </p>
       </div>
       <p role="status" className="text-sm text-muted-foreground">

@@ -17,6 +17,7 @@ import {
   isAuthConfigured,
   onAuthStateChange,
 } from "./lib/auth";
+import { applyTheme, getInitialTheme } from "./hooks/useTheme";
 
 // Alt+S guard: an armed padron confirm or an open edit row owns the
 // keyboard (PadronView two-tap grammar: Enter confirms, Esc disarms), so
@@ -44,6 +45,14 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(
     authConfigured ? undefined : null,
   );
+
+  // Startup theme: explicit localStorage choice first, OS signal
+  // otherwise (same resolution as the index.html early script, so React
+  // and first paint agree). Lives here — not in the sidebar toggle — so
+  // the login gate renders under the right theme too.
+  useEffect(() => {
+    applyTheme(getInitialTheme());
+  }, []);
 
   useEffect(() => {
     if (!authConfigured) {

@@ -174,9 +174,11 @@ describe("SyncStatusChip", () => {
     expect(title).toBe(
       "Guardado en este equipo · sin sincronizar · Sin sincronizar aún",
     );
+    // The accessible name stays STATIC (status text only): the title
+    // tooltip carries the receipt mouse-only, never the live name.
     expect(within(chip).getByRole("status")).toHaveAttribute(
       "aria-label",
-      title,
+      "Guardado en este equipo · sin sincronizar",
     );
   });
 
@@ -206,16 +208,41 @@ describe("SyncStatusChip", () => {
     expect(screen.getByTestId("sync-pending-badge")).toHaveTextContent("1");
     // Full text lines stay out of the clipped icon-width footer.
     expect(screen.queryByTestId("sync-receipt")).not.toBeInTheDocument();
-    // The collapsed icon carries the FULL composition (status + receipt)
-    // as its accessible name, mirroring the title tooltip.
+    // The collapsed icon carries a STATIC accessible name (status text +
+    // pending count only): the ticking receipt lives mouse-only in the
+    // title tooltip, never in the live name.
     expect(within(chip).getByRole("status")).toHaveAttribute(
       "aria-label",
-      "1 por sincronizar · Sin sincronizar aún",
+      "1 por sincronizar",
     );
-    expect(within(chip).getByRole("status")).toHaveAttribute(
-      "aria-label",
+    expect(within(chip).getByRole("status").getAttribute("aria-label")).not.toBe(
       chip.getAttribute("title"),
     );
+  });
+
+  it("keeps the collapsed accessible name static across ticks", () => {
+    vi.useFakeTimers();
+    try {
+      guard.recordPull(Date.now());
+      render(<SyncStatusChip collapsed />);
+      const chip = screen.getByTestId("sync-status-chip");
+      const status = within(chip).getByRole("status");
+      const before = status.getAttribute("aria-label")!;
+      expect(before).toBe("A salvo en este equipo");
+      // Fast 5s ticks re-render the receipt, then the 30s cadence: the
+      // live name must never move (no "hace 5s…" announcements).
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      const after = within(chip).getByRole("status").getAttribute("aria-label")!;
+      expect(after).toBe(before);
+      expect(after).not.toMatch(/hace/i);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("hides the badge when nothing is pending in collapsed mode", () => {

@@ -1391,17 +1391,22 @@ describe("PadronView bulk scope + print sync state", () => {
     expect(selectAllBoxes().header).toBeInTheDocument();
   });
 
-  it("prints the pending count with the never-synced receipt", () => {
+  it("prints the pending count with a fecha+hora generation stamp", () => {
     resetSyncGuardForTests();
     seedTwo();
     const { container } = render(<PadronView />);
     const header = container.querySelector(".padron-print-header");
     expect(header).not.toBeNull();
     expect(header).toHaveTextContent("2 pendientes por sincronizar");
-    expect(header).toHaveTextContent("Sin sincronizar aún");
+    // Absolute generation stamp (fecha + hora), never a frozen relative
+    // receipt: "hace X" on paper would lie within minutes.
+    expect(header).toHaveTextContent(/impreso:/i);
+    expect(header?.textContent).toMatch(/\d{1,2}:\d{2}/);
+    expect(header).not.toHaveTextContent(/hace/i);
+    expect(header).not.toHaveTextContent("Sin sincronizar aún");
   });
 
-  it("prints the clean state with the last-sync receipt", () => {
+  it("prints the clean state with the same generation stamp", () => {
     resetSyncGuardForTests();
     seedTwo();
     const { markSynced } = usePadronStore.getState();
@@ -1412,7 +1417,10 @@ describe("PadronView bulk scope + print sync state", () => {
     expect(header).toHaveTextContent(
       "Sin cambios pendientes de sincronización",
     );
-    expect(header).toHaveTextContent("Última sincronización hace 2 min");
+    expect(header).toHaveTextContent(/impreso:/i);
+    expect(header?.textContent).toMatch(/\d{1,2}:\d{2}/);
+    // The relative receipt stays on screen (the sync chip), never on paper.
+    expect(header).not.toHaveTextContent(/hace/i);
   });
 });
 
