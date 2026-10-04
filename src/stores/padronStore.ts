@@ -55,6 +55,10 @@ interface PadronState {
   add: (input: NewPaciente) => void;
   update: (id: string, patch: Partial<NewPaciente>) => void;
   remove: (id: string) => void;
+  // Undo for a tombstone soft-delete: clears deletedAt so the row is
+  // visible again. Marked dirty so the next push replicates the revival
+  // (deleted_at null wins by newer updatedAt). Local-only otherwise.
+  restore: (id: string) => void;
   // GC for pushed deletes: drops ONLY tombstones already replicated
   // (deletedAt set AND dirty=false). Dirty tombstones are still queued
   // for the next push and must survive.
@@ -145,6 +149,15 @@ export const usePadronStore = create<PadronState>()(
       purgeSyncedTombstones: () =>
         set((state) => ({
           pacientes: state.pacientes.filter((p) => !(p.deletedAt && !p.dirty)),
+        })),
+
+      restore: (id) =>
+        set((state) => ({
+          pacientes: state.pacientes.map((p) => {
+            if (p.id !== id || !p.deletedAt) return p;
+            const now = new Date().toISOString();
+            return { ...p, deletedAt: null, updatedAt: now, dirty: true };
+          }),
         })),
 
       countByDiagnosis: () => {

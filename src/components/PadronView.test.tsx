@@ -98,11 +98,12 @@ describe("PadronView", () => {
     ).toBeInTheDocument();
   });
 
-  it("deletes a patient from the padron", () => {
+  it("deletes a patient from the padron after confirmation", () => {
     seedTwo();
     render(<PadronView />);
     const row = rowByName("Luis Paz");
-    fireEvent.click(within(row).getByRole("button", { name: /eliminar/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
     const { pacientes } = usePadronStore.getState();
     expect(pacientes).toHaveLength(2);
     const tombstone = pacientes.find((p) => p.nombre === "Luis Paz")!;
@@ -110,6 +111,85 @@ describe("PadronView", () => {
     expect(tombstone.dirty).toBe(true);
     expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
     expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+  });
+
+  it("does not delete on the first tap: confirmation is required", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    // First tap only arms the guard: row stays, no tombstone, undo hidden.
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.nombre === "Luis Paz")!
+        .deletedAt,
+    ).toBeNull();
+    expect(screen.queryByText(/paciente eliminado/i)).not.toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: /confirmar/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: /cancelar/i }),
+    ).toBeInTheDocument();
+    // Second tap confirms the delete.
+    fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.nombre === "Luis Paz")!
+        .deletedAt,
+    ).toEqual(expect.any(String));
+  });
+
+  it("restores the patient when Deshacer is pressed in the undo toast", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
+    expect(screen.getByText(/paciente eliminado/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /deshacer/i }));
+    // Tombstone cleared and the row is visible again.
+    const restored = usePadronStore
+      .getState()
+      .pacientes.find((p) => p.nombre === "Luis Paz")!;
+    expect(restored.deletedAt).toBeNull();
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /deshacer/i })).not.toBeInTheDocument();
+  });
+
+  it("reverts without deleting when Cancelar is pressed", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /cancelar/i }));
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.nombre === "Luis Paz")!
+        .deletedAt,
+    ).toBeNull();
+    expect(
+      within(rowByName("Luis Paz")).getByRole("button", { name: /^eliminar$/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/paciente eliminado/i)).not.toBeInTheDocument();
+  });
+
+  it("reverts without deleting on Escape", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    const confirm = within(row).getByRole("button", { name: /confirmar/i });
+    fireEvent.keyDown(confirm, { key: "Escape" });
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.nombre === "Luis Paz")!
+        .deletedAt,
+    ).toBeNull();
+    expect(
+      within(rowByName("Luis Paz")).getByRole("button", { name: /^eliminar$/i }),
+    ).toBeInTheDocument();
   });
 
   it("lists patients in registration order while graves-first is off", () => {

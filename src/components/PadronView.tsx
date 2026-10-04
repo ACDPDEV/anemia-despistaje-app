@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   bySeverity,
   findPossibleDuplicates,
@@ -22,6 +22,9 @@ import { DIAGNOSIS_BADGE } from "./DashboardView";
 
 const COLUMN_COUNT = 5;
 
+// Undo toast visibility window after a confirmed delete.
+const UNDO_TIMEOUT_MS = 8000;
+
 // Filterable register: shadcn Table + single Input filter over nombre.
 // Row edit/delete reuse the existing store update/remove selectors.
 // Tombstones (deletedAt set) are hidden: remove() is a dirty soft-delete
@@ -32,9 +35,33 @@ export function PadronView({
   onEmptyRegister?: () => void;
 }) {
   const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
+  const restore = usePadronStore((s) => s.restore);
   const [filter, setFilter] = useState("");
   const [gravesPrimero, setGravesPrimero] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [undone, setUndone] = useState<{ id: string; nombre: string } | null>(
+    null,
+  );
+  const undoTimer = useRef<number | undefined>(undefined);
+
+  // The 8s undo window is wall-clock: a newer delete replaces the pending
+  // one and restarts the timer; unmount clears it.
+  useEffect(() => {
+    return () => window.clearTimeout(undoTimer.current);
+  }, []);
+
+  function handleDeleted(id: string, nombre: string) {
+    window.clearTimeout(undoTimer.current);
+    setUndone({ id, nombre });
+    undoTimer.current = window.setTimeout(() => setUndone(null), UNDO_TIMEOUT_MS);
+  }
+
+  function handleUndo() {
+    if (!undone) return;
+    restore(undone.id);
+    window.clearTimeout(undoTimer.current);
+    setUndone(null);
+  }
 
   if (pacientes.length === 0) {
     return (
@@ -197,12 +224,24 @@ export function PadronView({
                   key={p.id}
                   paciente={p}
                   onEdit={() => setEditingId(p.id)}
+                  onDeleted={handleDeleted}
                 />
               ),
             )
           )}
         </TableBody>
       </Table>
+      {undone && (
+        <div
+          role="status"
+          className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"
+        >
+          <p className="text-sm">Paciente eliminado.</p>
+          <Button type="button" size="sm" onClick={handleUndo}>
+            Deshacer
+          </Button>
+        </div>
+      )}
     </section>
   );
 }
@@ -210,13 +249,42 @@ export function PadronView({
 function PadronRow({
   paciente,
   onEdit,
+  onDeleted,
 }: {
   paciente: Paciente;
   onEdit: () => void;
+  onDeleted: (id: string, nombre: string) => void;
 }) {
   const remove = usePadronStore((s) => s.remove);
   const isPossibleDuplicate =
     findPossibleDuplicates(paciente.nombre).length > 1;
+  // Two-tap delete guard: the first tap arms the confirm state in place
+  // (same button keeps focus), the second tap confirms. Cancelar, Esc,
+  // focus leaving the group, or a ~4s timeout disarms with no delete.
+  const [confirming, setConfirming] = useState(false);
+  const confirmTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    return () => window.clearTimeout(confirmTimer.current);
+  }, []);
+
+  function disarm() {
+    window.clearTimeout(confirmTimer.current);
+    setConfirming(false);
+  }
+
+  function handleDeleteTap() {
+    if (!confirming) {
+      setConfirming(true);
+      window.clearTimeout(confirmTimer.current);
+      confirmTimer.current = window.setTimeout(disarm, 4000);
+      return;
+    }
+    window.clearTimeout(confirmTimer.current);
+    setConfirming(false);
+    remove(paciente.id);
+    onDeleted(paciente.id, paciente.nombre);
+  }
 
   return (
     <TableRow>
@@ -234,18 +302,51 @@ function PadronRow({
         </div>
       </TableCell>
       <TableCell className="padron-action-col">
-        <div className="flex gap-2">
+        <div
+          className="flex gap-2"
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) disarm();
+          }}
+        >
           <Button type="button" variant="outline" size="sm" onClick={onEdit}>
             Editar
           </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            onClick={() => remove(paciente.id)}
-          >
-            Eliminar
-          </Button>
+          {confirming ? (
+            <>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                aria-label={`Confirmar eliminación de ${paciente.nombre}`}
+                onClick={handleDeleteTap}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") disarm();
+                }}
+              >
+                Confirmar
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={disarm}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") disarm();
+                }}
+              >
+                Cancelar
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={handleDeleteTap}
+            >
+              Eliminar
+            </Button>
+          )}
         </div>
       </TableCell>
     </TableRow>

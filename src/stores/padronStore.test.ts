@@ -72,6 +72,24 @@ describe("padronStore", () => {
     });
     expect(usePadronStore.getState().averageHb()).toBeCloseTo(6.5);
   });
+
+  it("restores a tombstone: restore clears deletedAt and requeues a dirty push", () => {
+    addPatient({ nivelHemoglobina: 12.0 });
+    const id = usePadronStore.getState().pacientes[0].id;
+    usePadronStore.getState().remove(id);
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.id === id)?.deletedAt,
+    ).toEqual(expect.any(String));
+    usePadronStore.getState().restore(id);
+    const restored = usePadronStore
+      .getState()
+      .pacientes.find((p) => p.id === id)!;
+    expect(restored.deletedAt).toBeNull();
+    expect(restored.dirty).toBe(true);
+    expect(
+      usePadronStore.getState().pacientes.filter((p) => !p.deletedAt),
+    ).toHaveLength(1);
+  });
   it("rejects the 101st record with a Spanish cap message", () => {
     for (let i = 0; i < MAX_PADRON; i += 1) {
       addPatient({ nombre: `Paciente ${i}`, nivelHemoglobina: 11.5 });
