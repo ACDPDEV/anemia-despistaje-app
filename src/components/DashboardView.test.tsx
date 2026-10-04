@@ -141,48 +141,69 @@ describe("DashboardView", () => {
     ).toBeTruthy();
   });
 
-  it("keeps charts collapsed by default behind a desktop-visible toggle", () => {
+  it("keeps both pairs collapsed by default behind explicit toggles", () => {
     seedPadron();
     render(<DashboardView />);
 
-    const disclosure = screen.getByTestId(
-      "charts-disclosure",
-    ) as HTMLDetailsElement;
-    expect(disclosure.tagName).toBe("DETAILS");
+    const hb = screen.getByTestId("hb-disclosure") as HTMLDetailsElement;
+    const age = screen.getByTestId("age-disclosure") as HTMLDetailsElement;
+    expect(hb.tagName).toBe("DETAILS");
+    expect(age.tagName).toBe("DETAILS");
     // Collapsed by default on ALL widths (no matchMedia force-open).
-    expect(disclosure.open).toBe(false);
-    // The toggle is explicit on every width, not phones-only.
-    const summary = within(disclosure).getByText("Ver gráficos");
-    expect(summary.tagName).toBe("SUMMARY");
-    expect(summary.className).not.toMatch(/sm:hidden/);
-    // Charts stay mounted while collapsed.
-    expect(within(disclosure).getByTestId("hb-chart")).toBeInTheDocument();
-    expect(within(disclosure).getByTestId("age-chart")).toBeInTheDocument();
-    // The toggle event drives the controlled open state.
-    disclosure.open = true;
-    fireEvent(disclosure, new Event("toggle"));
+    expect(hb.open).toBe(false);
+    expect(age.open).toBe(false);
+    // Each toggle is explicit on every width, not phones-only.
+    const hbSummary = within(hb).getByText("Ver distribución de hemoglobina");
+    expect(hbSummary.tagName).toBe("SUMMARY");
+    expect(hbSummary.className).not.toMatch(/sm:hidden/);
+    const ageSummary = within(age).getByText("Ver riesgo por edad");
+    expect(ageSummary.tagName).toBe("SUMMARY");
+    expect(ageSummary.className).not.toMatch(/sm:hidden/);
+    // Pairs stay mounted while collapsed, each with its own content.
+    expect(within(hb).getByTestId("hb-chart")).toBeInTheDocument();
+    expect(within(hb).getByTestId("band-counts")).toBeInTheDocument();
+    expect(within(age).getByTestId("age-chart")).toBeInTheDocument();
+    expect(within(hb).queryByTestId("age-chart")).not.toBeInTheDocument();
+    expect(within(age).queryByTestId("hb-chart")).not.toBeInTheDocument();
+    // The toggle events drive the independent open states.
+    hb.open = true;
+    fireEvent(hb, new Event("toggle"));
     expect(
-      (screen.getByTestId("charts-disclosure") as HTMLDetailsElement).open,
+      (screen.getByTestId("hb-disclosure") as HTMLDetailsElement).open,
     ).toBe(true);
+    expect(
+      (screen.getByTestId("age-disclosure") as HTMLDetailsElement).open,
+    ).toBe(false);
   });
 
-  it("names the charts toggle honestly for its open state", () => {
+  it("names each toggle honestly for its open state", () => {
     seedPadron();
     render(<DashboardView />);
 
-    const disclosure = screen.getByTestId(
-      "charts-disclosure",
-    ) as HTMLDetailsElement;
-    expect(within(disclosure).getByText("Ver gráficos").tagName).toBe(
+    const hb = screen.getByTestId("hb-disclosure") as HTMLDetailsElement;
+    expect(
+      within(hb).getByText("Ver distribución de hemoglobina").tagName,
+    ).toBe("SUMMARY");
+    hb.open = true;
+    fireEvent(hb, new Event("toggle"));
+    expect(
+      within(hb).getByText("Ocultar distribución de hemoglobina").tagName,
+    ).toBe("SUMMARY");
+    expect(
+      within(hb).queryByText("Ver distribución de hemoglobina"),
+    ).not.toBeInTheDocument();
+
+    const age = screen.getByTestId("age-disclosure") as HTMLDetailsElement;
+    expect(within(age).getByText("Ver riesgo por edad").tagName).toBe(
       "SUMMARY",
     );
-    disclosure.open = true;
-    fireEvent(disclosure, new Event("toggle"));
-    expect(within(disclosure).getByText("Ocultar gráficos").tagName).toBe(
+    age.open = true;
+    fireEvent(age, new Event("toggle"));
+    expect(within(age).getByText("Ocultar riesgo por edad").tagName).toBe(
       "SUMMARY",
     );
     expect(
-      within(disclosure).queryByText("Ver gráficos"),
+      within(age).queryByText("Ver riesgo por edad"),
     ).not.toBeInTheDocument();
   });
 
@@ -271,21 +292,24 @@ describe("DashboardView", () => {
     }
   });
 
-  it("composes the disclosure body as grids at sm: bands 4-up, charts side-by-side", () => {
+  it("pairs each band set with its chart: Hb 2-col from sm, age single card", () => {
     seedPadron();
     render(<DashboardView />);
 
-    // Bands already lived in a 2×2 grid: keep it on phones, 4-up from sm.
+    // Hb pair: bands + chart side-by-side from sm, stacked on phones.
+    const pair = screen.getByTestId("hb-pair-grid");
+    expect(pair.className).toMatch(/grid-cols-1/);
+    expect(pair.className).toMatch(/sm:grid-cols-2/);
+    expect(pair).toContainElement(screen.getByTestId("band-counts"));
+    expect(pair).toContainElement(screen.getByTestId("hb-chart"));
+    expect(screen.getByTestId("hb-disclosure")).toContainElement(pair);
+    // Bands read 2×2 inside the pair's left column on every width.
     const bands = screen.getByTestId("band-counts");
     expect(bands.className).toMatch(/grid-cols-2/);
-    expect(bands.className).toMatch(/sm:grid-cols-4/);
-    // Charts stack on phones, sit side-by-side from sm.
-    const grid = screen.getByTestId("charts-grid");
-    expect(grid.className).toMatch(/grid-cols-1/);
-    expect(grid.className).toMatch(/sm:grid-cols-2/);
-    expect(grid).toContainElement(screen.getByTestId("hb-chart"));
-    expect(grid).toContainElement(screen.getByTestId("age-chart"));
-    expect(screen.getByTestId("charts-disclosure")).toContainElement(grid);
+    // Age pair: the risk card carries its own info, no grid needed.
+    const age = screen.getByTestId("age-disclosure");
+    expect(age).toContainElement(screen.getByTestId("age-chart"));
+    expect(age).toContainElement(screen.getByTestId("age-risk-text"));
   });
 
   it("shows every KPI card with value plus exactly one Spanish caption", () => {
@@ -348,10 +372,10 @@ describe("DashboardView", () => {
     expect(screen.getByTestId("kpi-anemia-pct")).toHaveTextContent("—");
     expect(screen.getAllByText(/sin registros/i).length).toBeGreaterThanOrEqual(1);
     // Total + 4 diagnosis counts are zero without errors (bands live
-    // inside the charts disclosure now, still in the DOM).
+    // inside the Hb disclosure now, still in the DOM).
     expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(5);
     const bandCounts = screen.getByTestId("band-counts");
-    expect(screen.getByTestId("charts-disclosure")).toContainElement(
+    expect(screen.getByTestId("hb-disclosure")).toContainElement(
       bandCounts,
     );
     for (const band of HB_BANDS) {
@@ -380,19 +404,24 @@ describe("DashboardView", () => {
     expect(screen.queryByTestId("empty-guide")).not.toBeInTheDocument();
   });
 
-  it("folds band counts into the charts disclosure: first screen holds 4 numbers", () => {
+  it("folds band counts into the Hb disclosure: first screen holds 4 numbers", () => {
     seedPadron();
     render(<DashboardView />);
-    const disclosure = screen.getByTestId("charts-disclosure");
+    const hb = screen.getByTestId("hb-disclosure");
+    const age = screen.getByTestId("age-disclosure");
     const bandCounts = screen.getByTestId("band-counts");
-    // Distribution data lives with the charts, not on the first screen.
-    expect(disclosure).toContainElement(bandCounts);
+    // Distribution data lives with its chart, not on the first screen.
+    expect(hb).toContainElement(bandCounts);
     for (const band of HB_BANDS) {
       expect(within(bandCounts).getByText(band)).toBeInTheDocument();
     }
+    // Age content stays out of the Hb pair and vice versa.
+    expect(hb).not.toContainElement(screen.getByTestId("age-chart"));
+    expect(age).not.toContainElement(screen.getByTestId("hb-chart"));
     // First screen numbers: hero + 3 KPIs only (4 numbers, not 8).
     for (const id of ["kpi-modsev", "kpi-total", "kpi-avg", "kpi-anemia-pct"]) {
-      expect(disclosure).not.toContainElement(screen.getByTestId(id));
+      expect(hb).not.toContainElement(screen.getByTestId(id));
+      expect(age).not.toContainElement(screen.getByTestId(id));
     }
   });
 

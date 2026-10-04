@@ -1,10 +1,17 @@
 // Spanish error mapper for the Supabase/PostgREST boundary.
 //
+// CONTRACT: the input is ALWAYS a raw provider message (English). Our own
+// business copy is ALREADY Spanish and must never be wrapped: throw sites
+// in auth.ts/sync.ts call this mapper only on `error.message` from the
+// Supabase client, while own-copy throws/returns (unconfigured auth, offline
+// queue, no-pending) go out directly in Spanish. Render-site catches
+// (LoginView, SyncStatusChip, app-sidebar) re-apply the mapper ONLY as a
+// safety net for unexpected raws that bypass the throw-site mapping — the
+// diacritics guard below makes that re-entry idempotent on own copy.
+// The raw message survives only in console.debug.
+//
 // PRODUCT invariant: "el usuario de campo no ve inglés". Raw provider
-// messages (English) must never reach a role=alert surface, so every throw
-// site in auth.ts/sync.ts and every render-site catch maps through
-// toSpanishErrorMessage. Our own Spanish copy passes through verbatim and
-// is never reworded. The raw message survives only in console.debug.
+// messages (English) must never reach a role=alert surface.
 
 // Known bad credentials (Supabase Auth).
 export const INVALID_CREDENTIALS_MESSAGE =
@@ -76,9 +83,11 @@ function matchesAny(lower: string, patterns: string[]): boolean {
 }
 
 // Maps a raw provider failure to field-user Spanish. Unknown input falls
-// back to GENERIC_ERROR_MESSAGE; our own Spanish copy (recognizable by its
-// diacritics) returns untouched so the mapper stays idempotent at
-// render-site catches that run after the throw-site mapping.
+// back to GENERIC_ERROR_MESSAGE. The diacritics guard is a cheap safety
+// net ONLY: per the contract above our own copy never enters the mapper on
+// purpose, but render-site catches re-apply it defensively, so Spanish
+// input (recognizable by its diacritics) returns untouched instead of
+// being reworded or swallowed by an English pattern.
 export function toSpanishErrorMessage(raw: unknown): string {
   const message = extractMessage(raw);
   if (message.length === 0) return GENERIC_ERROR_MESSAGE;

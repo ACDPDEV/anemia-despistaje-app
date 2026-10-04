@@ -597,6 +597,12 @@ export function PadronView({
           Ver Anemia Moderada y Severa primero
         </label>
       </div>
+      {/* Bulk bar: delete + export over selected ∩ visible only. Bulk
+          EDIT is deliberately out of scope: per-row editing preserves
+          row-level dirty/conflict semantics (each edit revalidates and
+          stamps its own updatedAt for the push/pull merge); a bulk editor
+          would need per-row conflict surfacing first. Revisit if jornada
+          volume demands it. */}
       {selectedVisible.length > 0 && (
         <div
           className="flex flex-wrap items-center gap-2"

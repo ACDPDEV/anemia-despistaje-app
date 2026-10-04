@@ -395,21 +395,58 @@ describe("SyncStatusChip", () => {
     );
   });
 
-  it("refreshes the receipt on the gentle 30s interval while mounted", () => {
+  it("ticks fast (5s) within the first minute so the fresh receipt never goes stale", () => {
     vi.useFakeTimers();
     try {
-      guard.recordPull(Date.now() - 50_000);
+      guard.recordPull(Date.now());
       const { unmount } = render(<SyncStatusChip />);
       expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
-        /última sincronización hace 50s/i,
+        /última sincronización hace 0s/i,
       );
+      // A 5s tick moves the seconds count while the sync is still fresh.
       act(() => {
-        vi.advanceTimersByTime(30_000);
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+        /última sincronización hace 5s/i,
+      );
+      // Fast ticks keep chaining until the minute boundary escalates.
+      act(() => {
+        vi.advanceTimersByTime(55_000);
       });
       expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
         "Última sincronización hace 1 min",
       );
-      // Cleanup on unmount: no interval left ticking.
+      // Cleanup on unmount: no timeout left ticking.
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("backs off to the gentle 30s cadence once the receipt is over a minute old", () => {
+    vi.useFakeTimers();
+    try {
+      guard.recordPull(Date.now() - 290_000);
+      const { unmount } = render(<SyncStatusChip />);
+      expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+        "Última sincronización hace 4 min",
+      );
+      // No 5s tick fires on the slow path: the receipt holds still.
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+        "Última sincronización hace 4 min",
+      );
+      // The 30s tick moves it at the next minute boundary.
+      act(() => {
+        vi.advanceTimersByTime(25_000);
+      });
+      expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+        "Última sincronización hace 5 min",
+      );
       unmount();
       expect(vi.getTimerCount()).toBe(0);
     } finally {

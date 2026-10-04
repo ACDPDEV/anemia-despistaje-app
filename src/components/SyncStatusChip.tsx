@@ -32,18 +32,23 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   // Last-sync receipt: mirrors lastPullAt live so the second line updates
   // right after a sync completes. Null until the first successful pull.
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(lastPullAt);
-  // Receipt freshness: a gentle 30s interval re-renders the receipt while
-  // mounted (cleanup on unmount). Interval over window-focus on purpose:
+  // Receipt freshness: adaptive tick — fast (5s) while the receipt is
+  // under a minute old, gentle (30s) after. The first minute after a sync
+  // is the trust-forming moment ("hace 4s" going stale for 30s reads
+  // broken), so the chip spends a few extra renders there and backs off
+  // once the receipt escalates to minutes. Chained setTimeout (not a fixed
+  // interval) so each tick re-reads lastSyncAt and the cadence relaxes on
+  // its own; cleanup on unmount. Interval over window-focus on purpose:
   // the chip sits in the sidebar through long field sessions where the
-  // window never blurs, and the receipt escalates at minute/hour
-  // boundaries — a 30s cadence keeps those boundaries honest without
-  // per-second render churn. (Within the first minute the seconds count
-  // can lag up to 30s; accepted tradeoff, documented here.)
-  const [, setTick] = useState(0);
+  // window never blurs.
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    const timer = window.setInterval(() => setTick((t) => t + 1), 30000);
-    return () => window.clearInterval(timer);
-  }, []);
+    const elapsedMs =
+      lastSyncAt === null ? Number.POSITIVE_INFINITY : Date.now() - lastSyncAt;
+    const delay = elapsedMs < 60_000 ? 5000 : 30000;
+    const timer = window.setTimeout(() => setTick((t) => t + 1), delay);
+    return () => window.clearTimeout(timer);
+  }, [lastSyncAt, tick]);
   // Last sync failure, kept visible until the next attempt starts.
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
@@ -158,7 +163,7 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   // Honest receipt line: the formatter owns the s/min/h escalation, so
   // compose with it directly. Never-synced shows no lie — a quiet
   // "Sin sincronizar aún". Date.now() reads fresh on every render, and the
-  // 30s interval above keeps it moving while mounted.
+  // adaptive tick above keeps it moving while mounted.
   const receipt =
     lastSyncAt === null
       ? "Sin sincronizar aún"

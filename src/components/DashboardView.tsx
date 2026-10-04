@@ -129,11 +129,16 @@ export function DashboardView() {
   const hbData = toHbBandData(counts);
   const ageCounts = groupByAgeBand(pacientes);
   const ageData = AGE_BANDS.map((band) => ({ band, count: ageCounts[band] }));
-  // Charts disclosure: collapsed by default on ALL widths behind an
-  // explicit toggle so the first screen is sentence + hero + numbers.
-  // Controlled open state survives React re-renders; no matchMedia
-  // override (it stole the user's collapse state on resize).
-  const [chartsOpen, setChartsOpen] = useState(false);
+  // Detail disclosures: collapsed by default on ALL widths behind
+  // explicit toggles so the first screen is sentence + hero + numbers.
+  // TWO toggles (not one): band counts belong with their chart, so each
+  // pair opens together — "distribución de hemoglobina" (bands + Hb
+  // chart) and "riesgo por edad" (age info + age chart). One open pair
+  // holds at most 4 focal points (bands, chart, legend, risk line never
+  // share a screen). Controlled open state survives React re-renders; no
+  // matchMedia override (it stole the user's collapse state on resize).
+  const [hbOpen, setHbOpen] = useState(false);
+  const [ageOpen, setAgeOpen] = useState(false);
   // Bar hue for each age band follows the worst diagnosis seen in that
   // band, so "Riesgo por grupo de edad" encodes risk instead of reusing a
   // neutral token. Boundary mirrors groupByAgeBand (< 24 → "6-23").
@@ -216,21 +221,24 @@ export function DashboardView() {
       </div>
 
       <details
-        data-testid="charts-disclosure"
-        open={chartsOpen}
-        onToggle={(event) => setChartsOpen(event.currentTarget.open)}
+        data-testid="hb-disclosure"
+        open={hbOpen}
+        onToggle={(event) => setHbOpen(event.currentTarget.open)}
         className="flex flex-col gap-6"
       >
         <summary className="cursor-pointer text-sm font-medium text-primary">
-          {chartsOpen ? "Ocultar gráficos" : "Ver gráficos"}
+          {hbOpen ? "Ocultar distribución de hemoglobina" : "Ver distribución de hemoglobina"}
         </summary>
-        <div className="flex flex-col gap-6">
-          {/* Distribution data lives with the charts behind the disclosure:
-              the 4 band counts duplicate chart-owned data, so the first
-              screen stays sentence + hero + 3 KPIs (4 numbers). Bands read
-              2×2 on phones, 4-up from sm; charts stack on phones and sit
-              side-by-side from sm. */}
-          <div data-testid="band-counts" className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {/* Hb pair: the 4 band counts live with their chart (they duplicate
+            chart-owned data), so the first screen stays sentence + hero +
+            3 KPIs (4 numbers). Stacked on phones, side-by-side from sm:
+            bands hold their 2×2 grid in the left column, the chart the
+            right one. */}
+        <div
+          data-testid="hb-pair-grid"
+          className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2"
+        >
+          <div data-testid="band-counts" className="grid grid-cols-2 gap-4">
             {BANDS.map((band) => (
               <Card key={band}>
                 <CardHeader>
@@ -249,7 +257,6 @@ export function DashboardView() {
               </Card>
             ))}
           </div>
-          <div data-testid="charts-grid" className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2">
           <Card className="min-w-0">
             <CardHeader>
               <CardTitle>Distribución de hemoglobina</CardTitle>
@@ -274,7 +281,7 @@ export function DashboardView() {
                       {hbData.map((d) => (
                         <Cell key={d.band} fill={SEVERITY_FILL[d.band]} />
                       ))}
-                      <LabelList dataKey="count" position="top" />
+                    <LabelList dataKey="count" position="top" />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -303,52 +310,64 @@ export function DashboardView() {
               </table>
             </CardContent>
           </Card>
+        </div>
+      </details>
 
-          <Card className="min-w-0">
-            <CardHeader>
-              <CardTitle>Riesgo por grupo de edad</CardTitle>
-              <CardDescription data-testid="age-legend">
-                El color indica el peor diagnóstico observado en el grupo
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="min-w-0">
-              <div data-testid="age-chart" className="h-[220px] w-full min-w-0">
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={ageData}>
-                    <XAxis dataKey="band" tick={{ fontSize: 11 }} interval={0} />
-                    <YAxis hide />
-                    <Bar dataKey="count" isAnimationActive={false}>
-                      {ageData.map((d) => (
-                        <Cell key={d.band} fill={SEVERITY_FILL[ageRisk[d.band]]} />
-                      ))}
-                      <LabelList dataKey="count" position="top" />
+      <details
+        data-testid="age-disclosure"
+        open={ageOpen}
+        onToggle={(event) => setAgeOpen(event.currentTarget.open)}
+        className="flex flex-col gap-6"
+      >
+        <summary className="cursor-pointer text-sm font-medium text-primary">
+          {ageOpen ? "Ocultar riesgo por edad" : "Ver riesgo por edad"}
+        </summary>
+        {/* Age pair: the risk encoding (legend + worst-case line) lives
+            with its chart in a single card — one focal group, no grid
+            needed. */}
+        <Card className="min-w-0">
+          <CardHeader>
+            <CardTitle>Riesgo por grupo de edad</CardTitle>
+            <CardDescription data-testid="age-legend">
+              El color indica el peor diagnóstico observado en el grupo
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="min-w-0">
+            <div data-testid="age-chart" className="h-[220px] w-full min-w-0">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={ageData}>
+                  <XAxis dataKey="band" tick={{ fontSize: 11 }} interval={0} />
+                  <YAxis hide />
+                  <Bar dataKey="count" isAnimationActive={false}>
+                    {ageData.map((d) => (
+                      <Cell key={d.band} fill={SEVERITY_FILL[ageRisk[d.band]]} />
+                    ))}
+                    <LabelList dataKey="count" position="top" />
                     </Bar>
                   </BarChart>
-                </ResponsiveContainer>
-              </div>
-              {/* Visible text carrier for the hue encoding: one compact line
-                  naming each band's worst case from the same ageRisk source
-                  the bars and the sr-only table read. Small, muted, theme
-                  tokens; the sr-only table stays canonical. */}
-              <p data-testid="age-risk-text" className="mt-2 text-xs text-muted-foreground">
-                {AGE_BANDS.map((band) => `${band}: ${ageRisk[band]}`).join(" · ")}
-              </p>
-              <table data-testid="age-data-table" className="sr-only">
-                <caption>Riesgo por grupo de edad, con el peor caso observado</caption>
-                <tbody>
-                  {ageData.map((d) => (
-                    <tr key={d.band}>
-                      <th scope="row">{d.band}</th>
-                      <td>{d.count}</td>
-                      <td>{ageRisk[d.band]}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-          </div>
-        </div>
+              </ResponsiveContainer>
+            </div>
+            {/* Visible text carrier for the hue encoding: one compact line
+                naming each band's worst case from the same ageRisk source
+                the bars and the sr-only table read. Small, muted, theme
+                tokens; the sr-only table stays canonical. */}
+            <p data-testid="age-risk-text" className="mt-2 text-xs text-muted-foreground">
+              {AGE_BANDS.map((band) => `${band}: ${ageRisk[band]}`).join(" · ")}
+            </p>
+            <table data-testid="age-data-table" className="sr-only">
+              <caption>Riesgo por grupo de edad, con el peor caso observado</caption>
+              <tbody>
+                {ageData.map((d) => (
+                  <tr key={d.band}>
+                    <th scope="row">{d.band}</th>
+                    <td>{d.count}</td>
+                    <td>{ageRisk[d.band]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
       </details>
     </section>
   );
