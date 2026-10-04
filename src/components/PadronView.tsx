@@ -27,6 +27,14 @@ import {
 } from "./ui/table";
 import { DIAGNOSIS_BADGE } from "./DashboardView";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
+import {
+  formatLastSyncAgo,
+  formatSyncPending,
+  lastPullAt,
+  subscribeSyncState,
+  SYNC_NEVER_SYNCED_RECEIPT,
+  SYNC_STATUS_SAFE,
+} from "../lib/syncGuard";
 import { useSlidingExpiry } from "../hooks/useSlidingExpiry";
 import { XIcon } from "lucide-react";
 
@@ -98,6 +106,14 @@ export function PadronView({
   const pendingSyncCount = usePadronStore((s) => s.pacientes).filter(
     (p) => p.dirty,
   ).length;
+  // Print-time sync receipt: the paper line reuses the chip vocabulary
+  // verbatim (pending count + last-sync receipt, never a divergent third
+  // phrasing). Subscribed live so a sync landing while the padrón is open
+  // prints the fresh receipt, not a mount-time one.
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(lastPullAt);
+  useEffect(() => {
+    return subscribeSyncState((state) => setLastSyncAt(state.lastPullAt));
+  }, []);
   const [filter, setFilter] = useState("");
   const [gravesPrimero, setGravesPrimero] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -482,9 +498,11 @@ export function PadronView({
         visible.length;
   // Print-time stamp: print renders from React, so render time IS the
   // honest generation time for a print-to-PDF flow (documented
-  // assumption). Fecha + hora, never the relative "hace X" receipt: a
-  // frozen relative line on paper would lie within minutes, while the
-  // pending count below is exact at render time.
+  // assumption). Fecha + hora anchors the line, and the sync tail reuses
+  // the chip vocabulary verbatim (pending count + last-sync receipt, or
+  // "Aún sin sincronizar"): the absolute stamp tells the reader when the
+  // paper was frozen, so the relative receipt reads against a known
+  // moment instead of lying.
   const now = new Date();
   const todayStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const printStamp = new Intl.DateTimeFormat("es-PE", {
@@ -618,11 +636,15 @@ export function PadronView({
         </p>
         <p className="text-sm">
           Impreso: {printStamp} ·{" "}
-          {pendingSyncCount === 0
-            ? "Sin cambios pendientes de sincronización"
-            : pendingSyncCount === 1
-              ? "1 pendiente por sincronizar"
-              : `${pendingSyncCount} pendientes por sincronizar`}
+          {pendingSyncCount > 0
+            ? formatSyncPending(pendingSyncCount)
+            : SYNC_STATUS_SAFE}{" "}
+          ·{" "}
+          {lastSyncAt === null
+            ? SYNC_NEVER_SYNCED_RECEIPT
+            : formatLastSyncAgo(
+                Math.max(0, Math.floor((Date.now() - lastSyncAt) / 1000)),
+              )}
         </p>
       </div>
       <p role="status" className="text-sm text-muted-foreground">
@@ -1041,12 +1063,15 @@ function PadronEditRow({
   }
   // Timeout disarm drops the parked switch/filter and hands focus back
   // to Nombre: the Descartar button unmounts, and focus must never fall
-  // through to <body>.
+  // through to <body>. Deferred through focusNombreOnDisarm (effect
+  // below): while armed the inputs are disabled, so a synchronous focus
+  // call here would land on a still-disabled control and silently fail.
+  const focusNombreOnDisarm = useRef(false);
   const handleDiscardExpire = useCallback(() => {
     setConfirmingDiscard(false);
     onDiscardDisarm();
-    document.getElementById(`nombre-${paciente.id}`)?.focus();
-  }, [onDiscardDisarm, paciente.id]);
+    focusNombreOnDisarm.current = true;
+  }, [onDiscardDisarm]);
   const { slideProps: discardSlideProps } = useSlidingExpiry(
     confirmingDiscard,
     handleDiscardExpire,
@@ -1061,8 +1086,23 @@ function PadronEditRow({
 
   // Arming moves focus to "Descartar cambios?" so Enter confirms and the
   // prompt is perceivable; Esc confirms the discard (second Esc overall).
+  // Focus choice matches the row/bulk delete guards (Confirmar takes focus
+  // when armed): the destructive confirm owns the keyboard in every armed
+  // row, never the safe disarm.
   useEffect(() => {
     if (confirmingDiscard) discardConfirmRef.current?.focus();
+  }, [confirmingDiscard]);
+
+  // "Seguir editando" (and the fuse timeout above) disarm while the draft
+  // stays open: focus returns to Nombre only after the re-render
+  // re-enables the inputs. Flag-gated so blur-disarms (focus already left
+  // the group) and confirmed discards (the parent owns focus: Editar
+  // button, next row, or filter anchor) never get yanked back here.
+  useEffect(() => {
+    if (!confirmingDiscard && focusNombreOnDisarm.current) {
+      focusNombreOnDisarm.current = false;
+      focusNombre();
+    }
   }, [confirmingDiscard]);
 
   // Row-switch / filter gestures arm the confirm from the outside. The
@@ -1195,6 +1235,7 @@ function PadronEditRow({
               id={nombreInputId}
               value={nombre}
               maxLength={MAX_NOMBRE}
+              disabled={confirmingDiscard}
               onChange={(e) => {
                 setNombre(e.target.value);
                 if (nombreError) setNombreError(null);
@@ -1217,6 +1258,7 @@ function PadronEditRow({
               id={`edad-${paciente.id}`}
               inputMode="numeric"
               value={edad}
+              disabled={confirmingDiscard}
               onChange={(e) => {
                 setEdad(e.target.value);
                 if (edadError) setEdadError(null);
@@ -1236,6 +1278,7 @@ function PadronEditRow({
               id={`hb-${paciente.id}`}
               inputMode="decimal"
               value={hb}
+              disabled={confirmingDiscard}
               onChange={(e) => {
                 setHb(e.target.value);
                 if (hbError) setHbError(null);
@@ -1287,13 +1330,20 @@ function PadronEditRow({
             onKeyDownCapture={discardSlideProps.onKeyDownCapture}
             onPointerOverCapture={discardSlideProps.onPointerOverCapture}
           >
-            <Button
-              type="submit"
-              size="sm"
-              className="pointer-coarse:min-h-11"
-            >
-              Guardar
-            </Button>
+            {/* Armed discard is a binary choice: while the confirm is up
+                the inputs above are disabled and Guardar steps aside, so
+                the row offers exactly "¿Descartar cambios?" (destructive)
+                and "Seguir editando" (safe). Disarming restores the full
+                form with the draft intact. */}
+            {!confirmingDiscard && (
+              <Button
+                type="submit"
+                size="sm"
+                className="pointer-coarse:min-h-11"
+              >
+                Guardar
+              </Button>
+            )}
             {confirmingDiscard ? (
               <>
                 <Button
@@ -1322,13 +1372,15 @@ function PadronEditRow({
                   className="pointer-coarse:min-h-11"
                   onClick={() => {
                     disarmDiscard();
-                    focusNombre();
+                    // Deferred: the effect above focuses Nombre after the
+                    // re-render re-enables the armed-disabled inputs.
+                    focusNombreOnDisarm.current = true;
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Escape") {
                       e.stopPropagation();
                       disarmDiscard();
-                      focusNombre();
+                      focusNombreOnDisarm.current = true;
                     }
                   }}
                 >

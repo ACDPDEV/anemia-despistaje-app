@@ -75,10 +75,15 @@ export default function App() {
   }, [authConfigured]);
 
   // Keyboard shortcuts: Alt+1/Alt+2/Alt+3 switch tabs
-  // (Registro/Padrón/Panel); Alt+S submits the register form.
-  // preventDefault avoids browser menu conflicts. Alt+S is scoped to the
-  // register tab and stands down while a padron guard is armed (see
-  // isPadronGuardArmed above).
+  // (Registro/Padrón/Panel); Alt+S submits the register form; Alt+G fires
+  // the sidebar sync action. preventDefault avoids browser menu conflicts.
+  // Alt+S is scoped to the register tab and stands down while a padron
+  // guard is armed (see isPadronGuardArmed above). Alt+G works from any tab
+  // but stands down under the same guard, and only while sync is
+  // actionable: the chip renders its action (tagged data-sync-action) only
+  // when online with pending work or a retryable error, and disables it
+  // mid-flight — the :not([disabled]) query respects exactly that, so the
+  // shell never invents its own enabled logic.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!event.altKey || event.ctrlKey || event.metaKey) return;
@@ -98,6 +103,14 @@ export default function App() {
         (
           document.getElementById("register-form") as HTMLFormElement | null
         )?.requestSubmit();
+      } else if (event.key === "g" || event.key === "G") {
+        if (isPadronGuardArmed(document)) return;
+        const syncButton = document.querySelector<HTMLButtonElement>(
+          'button[data-sync-action="true"]:not([disabled])',
+        );
+        if (!syncButton) return;
+        event.preventDefault();
+        syncButton.click();
       }
     }
     window.addEventListener("keydown", onKeyDown);

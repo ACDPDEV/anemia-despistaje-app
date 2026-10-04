@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
 import { SyncStatusChip } from "./SyncStatusChip";
 import { pushDirty } from "../lib/sync";
@@ -93,7 +93,7 @@ afterEach(() => {
 describe("SyncStatusChip", () => {
   it("reports honest never-synced state on this device when clean", () => {
     render(<SyncStatusChip />);
-    expect(statusText()).toBe("Guardado en este equipo · sin sincronizar");
+    expect(statusText()).toBe("A salvo en este equipo");
     // Clean state stays quiet: text only, no action.
     expect(
       screen.queryByRole("button", { name: /sincronizar/i }),
@@ -128,13 +128,13 @@ describe("SyncStatusChip", () => {
     const { add } = usePadronStore.getState();
     add({ nombre: "Ana Torres", edadMeses: 24, nivelHemoglobina: 12.0 });
     render(<SyncStatusChip />);
-    expect(statusText()).toBe("Sin conexión · 1 pendientes");
+    expect(statusText()).toBe("Sin conexión · 1 por sincronizar");
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("reacts to offline/online events without a reload", () => {
     render(<SyncStatusChip />);
-    expect(statusText()).toBe("Guardado en este equipo · sin sincronizar");
+    expect(statusText()).toBe("A salvo en este equipo");
     act(() => {
       setOnline(false);
       fireEvent(window, new Event("offline"));
@@ -144,7 +144,7 @@ describe("SyncStatusChip", () => {
       setOnline(true);
       fireEvent(window, new Event("online"));
     });
-    expect(statusText()).toBe("Guardado en este equipo · sin sincronizar");
+    expect(statusText()).toBe("A salvo en este equipo");
   });
 
   it("announces as a polite live region", () => {
@@ -164,7 +164,7 @@ describe("SyncStatusChip", () => {
     const receipt = screen.getByTestId("sync-receipt");
     expect(receipt).not.toHaveAttribute("role");
     expect(receipt).not.toHaveAttribute("aria-live");
-    expect(receipt).toHaveTextContent("Sin sincronizar aún");
+    expect(receipt).toHaveTextContent("Aún sin sincronizar");
   });
 
   it("names the collapsed chip with the composed Spanish title", () => {
@@ -172,13 +172,13 @@ describe("SyncStatusChip", () => {
     const chip = screen.getByTestId("sync-status-chip");
     const title = chip.getAttribute("title")!;
     expect(title).toBe(
-      "Guardado en este equipo · sin sincronizar · Sin sincronizar aún",
+      "A salvo en este equipo · Aún sin sincronizar",
     );
     // The accessible name stays STATIC (status text only): the title
     // tooltip carries the receipt mouse-only, never the live name.
     expect(within(chip).getByRole("status")).toHaveAttribute(
       "aria-label",
-      "Guardado en este equipo · sin sincronizar",
+      "A salvo en este equipo",
     );
   });
 
@@ -186,13 +186,13 @@ describe("SyncStatusChip", () => {
     const { rerender } = render(<SyncStatusChip />);
     expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
       "title",
-      "Guardado en este equipo · sin sincronizar · Sin sincronizar aún",
+      "A salvo en este equipo · Aún sin sincronizar",
     );
     seedDirty();
     rerender(<SyncStatusChip />);
     expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
       "title",
-      "1 por sincronizar · Sin sincronizar aún",
+      "1 por sincronizar · Aún sin sincronizar",
     );
   });
 
@@ -203,7 +203,7 @@ describe("SyncStatusChip", () => {
     const chip = screen.getByTestId("sync-status-chip");
     expect(chip).toHaveAttribute(
       "title",
-      "1 por sincronizar · Sin sincronizar aún",
+      "1 por sincronizar · Aún sin sincronizar",
     );
     expect(screen.getByTestId("sync-pending-badge")).toHaveTextContent("1");
     // Full text lines stay out of the clipped icon-width footer.
@@ -251,7 +251,7 @@ describe("SyncStatusChip", () => {
     expect(screen.queryByTestId("sync-pending-badge")).not.toBeInTheDocument();
     expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
       "title",
-      "Guardado en este equipo · sin sincronizar · Sin sincronizar aún",
+      "A salvo en este equipo · Aún sin sincronizar",
     );
   });
 
@@ -422,7 +422,7 @@ describe("SyncStatusChip", () => {
   it("shows an honest never-synced receipt instead of a timeless claim", () => {
     render(<SyncStatusChip />);
     expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
-      "Sin sincronizar aún",
+      "Aún sin sincronizar",
     );
   });
 
@@ -435,7 +435,7 @@ describe("SyncStatusChip", () => {
     });
     render(<SyncStatusChip />);
     expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
-      "Sin sincronizar aún",
+      "Aún sin sincronizar",
     );
 
     fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
@@ -482,6 +482,43 @@ describe("SyncStatusChip", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("exposes Alt+G on the expanded sync action for the shell shortcut", () => {
+    seedDirty();
+    render(<SyncStatusChip />);
+    const action = screen.getByRole("button", { name: /^sincronizar$/i });
+    expect(action).toHaveAttribute("aria-keyshortcuts", "Alt+G");
+    expect(action.getAttribute("title")).toContain("Alt+G");
+    expect(action).toHaveAttribute("data-sync-action", "true");
+  });
+
+  it("keeps the sync action in collapsed mode with the Alt+G shortcut", async () => {
+    const id = seedDirty();
+    pushMock.mockResolvedValue({
+      ok: true,
+      pushedIds: [id],
+      message: "Se sincronizó 1 registro con Supabase.",
+    });
+    render(<SyncStatusChip collapsed />);
+
+    const action = screen.getByRole("button", { name: /^sincronizar$/i });
+    expect(action).toHaveAttribute("aria-keyshortcuts", "Alt+G");
+    expect(action.getAttribute("title")).toContain("Alt+G");
+    expect(action.getAttribute("title")).toContain("1 por sincronizar");
+
+    fireEvent.click(action);
+    await waitFor(() => {
+      expect(screen.queryByTestId("sync-pending-badge")).not.toBeInTheDocument();
+    });
+    expect(pushMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the collapsed sync action when there is nothing to sync", () => {
+    render(<SyncStatusChip collapsed />);
+    expect(
+      screen.queryByRole("button", { name: /sincronizar|reintentar/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("backs off to the gentle 30s cadence once the receipt is over a minute old", () => {

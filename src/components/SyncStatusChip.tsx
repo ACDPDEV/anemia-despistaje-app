@@ -6,12 +6,16 @@ import { createSupabaseSyncTable, filterUnchangedIds, pushDirty } from "../lib/s
 import { getSupabaseClient } from "../lib/supabase";
 import {
   formatLastSyncAgo,
+  formatSyncPending,
   guardedPull,
   isSyncing,
   lastPullAt,
   runGuarded,
   subscribeSyncState,
   SYNC_BUSY_MESSAGE,
+  SYNC_NEVER_SYNCED_RECEIPT,
+  SYNC_STATUS_OFFLINE,
+  SYNC_STATUS_SAFE,
   SYNCING_LABEL,
 } from "../lib/syncGuard";
 import { Button } from "./ui/button";
@@ -23,8 +27,10 @@ import { toSpanishErrorMessage } from "../lib/errorMessages";
 // guardedPull re-enters runGuarded and would report in-flight inside it.
 // Spanish copy, theme tokens, no animation, no toasts: failure speaks
 // through an inline message with a retry action. Collapsed (icon-width
-// sidebar) renders an icon-with-badge plus the title tooltip so the footer
-// never clips; the full text, receipt, and error lines return expanded.
+// sidebar) renders an icon-with-badge plus the title tooltip plus a sync
+// icon button (same action, Alt+G) so the footer never clips and never
+// loses the sync path; the full text, receipt, and error lines return
+// expanded.
 export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   const pacientes = usePadronStore((s) => s.pacientes);
   const online = useOnline();
@@ -71,12 +77,10 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   const pending = pacientes.filter((p) => p.dirty).length;
 
   const text = !online
-    ? `Sin conexión · ${pending} pendientes`
+    ? `${SYNC_STATUS_OFFLINE} · ${formatSyncPending(pending)}`
     : pending > 0
-      ? `${pending} por sincronizar`
-      : lastSyncAt === null
-        ? "Guardado en este equipo · sin sincronizar"
-        : "A salvo en este equipo";
+      ? formatSyncPending(pending)
+      : SYNC_STATUS_SAFE;
 
   function fail(message: string): void {
     if (alive.current) setError(message);
@@ -161,12 +165,13 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   const showAction = online && (pending > 0 || error !== null || syncing);
   const buttonLabel = syncing ? SYNCING_LABEL : error !== null ? "Reintentar" : "Sincronizar";
   // Honest receipt line: the formatter owns the s/min/h escalation, so
-  // compose with it directly. Never-synced shows no lie — a quiet
-  // "Sin sincronizar aún". Date.now() reads fresh on every render, and the
-  // adaptive tick above keeps it moving while mounted.
+  // compose with it directly. Never-synced shows no lie — the shared
+  // "Aún sin sincronizar" (one vocabulary with the print header). Date.now()
+  // reads fresh on every render, and the adaptive tick above keeps it moving
+  // while mounted.
   const receipt =
     lastSyncAt === null
-      ? "Sin sincronizar aún"
+      ? SYNC_NEVER_SYNCED_RECEIPT
       : formatLastSyncAgo(Math.max(0, Math.floor((Date.now() - lastSyncAt) / 1000)));
   // Mirrors the full status so the collapsed (icon-only) sidebar clipping
   // stays discoverable through the native tooltip.
@@ -179,14 +184,16 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   // re-announces on every accessible-name change, so embedding the receipt
   // would read "hace 5s… hace 10s…" unattended every tick. The receipt
   // stays mouse-only in the title tooltip, and on demand in the expanded
-  // receipt line below.
+  // receipt line below. The sync action survives collapse as an icon button
+  // (same handler, same enabled/disabled grammar, Alt+G shortcut) so
+  // icon-width users can still sync.
   if (collapsed) {
     const Icon = !online ? CloudOff : syncing ? RefreshCw : Cloud;
     return (
       <div
         data-testid="sync-status-chip"
         title={title}
-        className="flex justify-center py-1"
+        className="flex flex-col items-center gap-1 py-1"
       >
         <span className="relative inline-flex" role="status" aria-label={text}>
           <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -200,6 +207,22 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
             </span>
           )}
         </span>
+        {showAction && (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-xs"
+            data-sync-action="true"
+            className="pointer-coarse:min-h-11"
+            disabled={syncing}
+            aria-label={buttonLabel}
+            aria-keyshortcuts="Alt+G"
+            title={`${buttonLabel} (Alt+G) · ${text}`}
+            onClick={() => void handleSync()}
+          >
+            <RefreshCw aria-hidden="true" />
+          </Button>
+        )}
       </div>
     );
   }
@@ -218,8 +241,11 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
             type="button"
             variant="outline"
             size="xs"
+            data-sync-action="true"
             className="pointer-coarse:min-h-11"
             disabled={syncing}
+            aria-keyshortcuts="Alt+G"
+            title={`${buttonLabel} (Alt+G)`}
             onClick={() => void handleSync()}
           >
             {buttonLabel}

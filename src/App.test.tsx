@@ -186,7 +186,7 @@ describe("App sidebar shell", () => {
     // The collapsed chip keeps its composed title tooltip.
     expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
       "title",
-      "Guardado en este equipo · sin sincronizar · Sin sincronizar aún",
+      "A salvo en este equipo · Aún sin sincronizar",
     );
 
     fireEvent.click(screen.getByRole("button", { name: /alternar barra lateral/i }));
@@ -223,7 +223,7 @@ describe("App sidebar shell", () => {
   it("answers safety from the shell footer when the padron is clean", () => {
     render(<App />);
     expect(screen.getByTestId("sync-status-chip")).toHaveTextContent(
-      "Guardado en este equipo · sin sincronizar",
+      "A salvo en este equipo",
     );
   });
 
@@ -359,5 +359,108 @@ describe("App sidebar shell", () => {
     // Four severity dots, theme tokens only, decorative.
     const dots = lockup.querySelectorAll('span[aria-hidden="true"] > span');
     expect(dots).toHaveLength(4);
+  });
+
+  it("names the Alt+G sync shortcut in the footer shortcuts line", () => {
+    render(<App />);
+    expect(screen.getByTestId("sidebar-shortcuts")).toHaveTextContent(
+      /alt\+g sincronizar/i,
+    );
+  });
+
+  it("fires the sync with Alt+G when pending work exists", async () => {
+    render(<App />);
+    registerPatient();
+    expect(screen.getByTestId("sync-status-chip")).toHaveTextContent(
+      "1 por sincronizar",
+    );
+
+    fireEvent.keyDown(window, { key: "g", altKey: true });
+
+    // Offline-first shell: no Supabase credentials here, so the sync path
+    // runs and reports the unconfigured cause — proving Alt+G fired it.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /no está configurada/i,
+    );
+  });
+
+  it("ignores Alt+G while any padron guard owns the keyboard", () => {
+    render(<App />);
+    registerPatient();
+
+    // Same planted-guard grammar as the Alt+S test: armed delete confirm,
+    // open edit row, armed dirty-discard confirm.
+    const guards: HTMLElement[] = [];
+    const confirm = document.createElement("button");
+    confirm.setAttribute("aria-label", "Confirmar eliminación de Prueba");
+    confirm.textContent = "Confirmar";
+    guards.push(confirm);
+    const editInput = document.createElement("input");
+    editInput.id = "nombre-abc123";
+    guards.push(editInput);
+    const discard = document.createElement("button");
+    discard.textContent = "Descartar cambios?";
+    guards.push(discard);
+
+    try {
+      for (const guard of guards) {
+        document.body.appendChild(guard);
+        fireEvent.keyDown(window, { key: "g", altKey: true });
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        guard.remove();
+      }
+    } finally {
+      for (const guard of guards) guard.remove();
+    }
+  });
+
+  it("ignores Alt+G with a clean padron (no sync action to fire)", () => {
+    render(<App />);
+    expect(
+      screen.queryByRole("button", { name: /sincronizar/i }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "g", altKey: true });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
+  });
+
+  it("keeps a working sync button when collapsed", async () => {
+    render(<App />);
+    registerPatient();
+    fireEvent.click(screen.getByRole("button", { name: /alternar barra lateral/i }));
+    expect(screen.queryByTestId("sidebar-shortcuts")).not.toBeInTheDocument();
+
+    const action = screen.getByRole("button", { name: /^sincronizar$/i });
+    expect(action).toHaveAttribute("aria-keyshortcuts", "Alt+G");
+    expect(action.getAttribute("title")).toContain("Alt+G");
+
+    fireEvent.click(action);
+    // Offline-first shell: no Supabase credentials here, so the sync path
+    // runs and the failure surfaces the collapsed way — the composed title
+    // carries the cause and the action becomes a retry.
+    const retry = await screen.findByRole("button", { name: /reintentar/i });
+    expect(retry).toHaveAttribute("aria-keyshortcuts", "Alt+G");
+    expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
+      "title",
+      expect.stringMatching(/no está configurada/i),
+    );
+  });
+
+  it("keeps the help steps behind a collapsed help control", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /alternar barra lateral/i }));
+    expect(screen.queryByTestId("sidebar-help")).not.toBeInTheDocument();
+
+    const help = screen.getByTestId("sidebar-help-collapsed");
+    expect(help).toHaveAttribute("aria-label", expect.stringMatching(/cómo funciona/i));
+    fireEvent.click(help);
+
+    const popover = screen.getByTestId("sidebar-help-popover");
+    for (const step of [/registra/i, /duplicado/i, /sincroniza/i, /imprime/i]) {
+      expect(popover).toHaveTextContent(step);
+    }
+    expect(popover).toHaveTextContent(/alt\+g/i);
   });
 });

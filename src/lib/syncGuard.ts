@@ -28,6 +28,23 @@ export const SYNC_BUSY_MESSAGE = "Sincronizando… Espera a que termine la sincr
 // Prefix for the "last sync Xs ago" label; use formatLastSyncAgo for the full text.
 export const LAST_SYNC_PREFIX = "Última sincronización hace";
 
+// One sync vocabulary: every surface (status chip, print header, offline
+// line) names the same two states with the same strings, verbatim. English
+// names, Spanish values. The local guarantee is the same whether the device
+// never synced or synced with nothing pending, so both read "A salvo en
+// este equipo" — the receipt line below it carries the never-synced truth
+// ("Aún sin sincronizar") exactly once, never as a status+receipt doublet.
+export const SYNC_STATUS_SAFE = "A salvo en este equipo";
+export const SYNC_STATUS_OFFLINE = "Sin conexión";
+export const SYNC_NEVER_SYNCED_RECEIPT = "Aún sin sincronizar";
+
+// Pending-count line shared by the chip, the collapsed title, and print:
+// "N por sincronizar". Complete message (never a fragment) so translators
+// can reorder the count.
+export function formatSyncPending(count: number): string {
+  return `${count} por sincronizar`;
+}
+
 // Full "Última sincronización hace …" label for a given elapsed second
 // count. Escalates honestly with floored units and no invented precision:
 // under a minute shows seconds, under an hour shows whole minutes, beyond

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ClipboardList, LayoutDashboard, LogOut, Users, type LucideIcon } from "lucide-react";
+import { useRef, useState } from "react";
+import { CircleHelp, ClipboardList, LayoutDashboard, LogOut, Users, type LucideIcon } from "lucide-react";
 import { useSidebar } from "./ui/sidebar";
 import { isAuthConfigured, signOut } from "../lib/auth";
 import { toSpanishErrorMessage } from "../lib/errorMessages";
@@ -42,16 +42,39 @@ type AppSidebarProps = {
 // Sole navigation control. Active state derives from the single TabId source.
 // The header keeps the compact brand lockup (the page h1 owns the full
 // title). The footer answers safety and discoverability: the sync/offline
-// status chip, the theme toggle (PRODUCT's required modo oscuro/claro),
+// status chip (with its own sync action, surviving collapse as an icon
+// button), the theme toggle (PRODUCT's required modo oscuro/claro),
 // one task-ordered help disclosure (the only help entry point: registrar →
-// duplicado → sincronizar → imprimir/exportar plus the Alt shortcuts), one
-// visible line naming the Alt+1/2/3 tab shortcuts (the only shortcut source
-// of truth, hidden when collapsed to icon width), plus logout when auth is
-// configured (offline-first local mode shows no logout). The shortcuts
-// line, help, and theme label hide when collapsed to icon width, so each
-// nav button also carries aria-keyshortcuts plus a native title with its
-// shortcut: collapsed icon buttons keep exposing Alt+1/2/3. Sign-out failure stays inline with a retry; success clears via
+// duplicado → sincronizar → imprimir/exportar plus the Alt shortcuts; a help
+// icon button with the SAME steps in a small popover when collapsed, since
+// a title tooltip cannot carry 4 lines), one visible line naming the
+// Alt+1/2/3/Alt+G shortcuts (the only shortcut source of truth, hidden when
+// collapsed to icon width), plus logout when auth is configured
+// (offline-first local mode shows no logout). The shortcuts line, help, and
+// theme label hide when collapsed to icon width, so each nav button also
+// carries aria-keyshortcuts plus a native title with its shortcut:
+// collapsed icon buttons keep exposing Alt+1/2/3. Sign-out failure stays inline with a retry; success clears via
 // App.tsx onAuthStateChange.
+
+// The 4 jornada steps + shortcuts line, shared verbatim by the expanded
+// <details> and the collapsed popover below: one component so the two
+// branches can never drift apart.
+function HelpSteps() {
+  return (
+    <>
+      <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+        <li>Registra al paciente en la pestaña Registro.</li>
+        <li>Revisa el aviso de posible duplicado.</li>
+        <li>Sincroniza con Alt+G cuando tengas conexión.</li>
+        <li>Imprime o exporta desde el Padrón.</li>
+      </ol>
+      <p className="mt-1">
+        Atajos: Alt+1/2/3 cambian de pestaña, Alt+S registra, Alt+G
+        sincroniza.
+      </p>
+    </>
+  );
+}
 export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
   const { setOpenMobile, state } = useSidebar();
   const authConfigured = isAuthConfigured();
@@ -63,6 +86,12 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
   // App.tsx clears the session through onAuthStateChange.
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  // Collapsed help disclosure: icon-width users get the same 4 steps in a
+  // small non-modal popover (a title tooltip cannot carry 4 lines). Toggle
+  // + Esc + blur-out-of-wrapper close it; focus stays on the button so
+  // screen-reader users meet the freshly revealed steps right after it.
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
 
   const handleNavigate = (id: TabId) => {
     onNavigate(id);
@@ -120,23 +149,64 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
       <SidebarFooter>
         {!collapsed && (
           <p data-testid="sidebar-shortcuts" className="px-2 text-[11px] text-muted-foreground">
-            Atajos: Alt+1 Registro · Alt+2 Padrón · Alt+3 Panel
+            Atajos: Alt+1 Registro · Alt+2 Padrón · Alt+3 Panel · Alt+G Sincronizar
           </p>
         )}
         <SyncStatusChip collapsed={collapsed} />
         <ThemeToggle />
-        {!collapsed && (
+        {collapsed ? (
+          <div
+            className="relative flex justify-center py-1"
+            onBlur={(e) => {
+              // Same disarm-on-leave grammar as the padron confirms: focus
+              // leaving the wrapper closes the popover, draft-free.
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                setHelpOpen(false);
+              }
+            }}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="pointer-coarse:min-h-11"
+              ref={helpButtonRef}
+              data-testid="sidebar-help-collapsed"
+              aria-label="¿Cómo funciona?"
+              aria-expanded={helpOpen}
+              title="¿Cómo funciona?"
+              onClick={() => setHelpOpen((open) => !open)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setHelpOpen(false);
+              }}
+            >
+              <CircleHelp aria-hidden="true" />
+            </Button>
+            {helpOpen && (
+              <div
+                role="dialog"
+                aria-label="¿Cómo funciona?"
+                data-testid="sidebar-help-popover"
+                className="absolute bottom-full left-0 z-50 mb-2 w-64 rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground shadow-lg"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    setHelpOpen(false);
+                    helpButtonRef.current?.focus();
+                  }
+                }}
+              >
+                <p className="font-medium text-foreground">¿Cómo funciona?</p>
+                <HelpSteps />
+              </div>
+            )}
+          </div>
+        ) : (
           <details data-testid="sidebar-help" className="px-2 text-xs text-muted-foreground">
             <summary className="cursor-pointer font-medium text-foreground pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
               ¿Cómo funciona?
             </summary>
-            <ol className="mt-1 list-decimal space-y-0.5 pl-4">
-              <li>Registra al paciente en la pestaña Registro.</li>
-              <li>Revisa el aviso de posible duplicado.</li>
-              <li>Sincroniza cuando tengas conexión.</li>
-              <li>Imprime o exporta desde el Padrón.</li>
-            </ol>
-            <p className="mt-1">Atajos: Alt+1/2/3 cambian de pestaña, Alt+S registra.</p>
+            <HelpSteps />
           </details>
         )}
         {authConfigured && (

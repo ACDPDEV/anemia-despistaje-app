@@ -419,7 +419,10 @@ describe("PadronView", () => {
     expect(
       screen.getByRole("button", { name: /descartar cambios/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
+    // Armed row is binary: Guardar steps aside, inputs lock.
+    expect(
+      screen.queryByRole("button", { name: /guardar/i }),
+    ).not.toBeInTheDocument();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: /descartar cambios/i }),
     );
@@ -1078,7 +1081,11 @@ describe("PadronView focus management + dirty-edit guard", () => {
     expect(
       screen.getByRole("button", { name: /descartar cambios/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
+    // Armed row is binary: no Guardar, inputs locked.
+    expect(
+      screen.queryByRole("button", { name: /guardar/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^nombre/i)).toBeDisabled();
     // Confirming discards the draft and returns focus to Editar.
     fireEvent.click(
       screen.getByRole("button", { name: /descartar cambios/i }),
@@ -1110,6 +1117,42 @@ describe("PadronView focus management + dirty-edit guard", () => {
     expect(
       screen.queryByRole("button", { name: /descartar cambios/i }),
     ).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByLabelText(/^nombre/i));
+  });
+
+  it("narrows the armed discard to a binary choice with locked inputs", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Cambiado" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^cancelar$/i }));
+    // While armed the edit form offers exactly two actions: the
+    // destructive confirm and the safe disarm — Guardar steps aside.
+    const form = screen.getByLabelText(/^nombre/i).closest("form")!;
+    expect(within(form).getAllByRole("button")).toHaveLength(2);
+    expect(
+      within(form).getByRole("button", { name: /descartar cambios/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(form).getByRole("button", { name: /seguir editando/i }),
+    ).toBeInTheDocument();
+    // All three inputs lock so there is nothing else to act on.
+    expect(screen.getByLabelText(/^nombre/i)).toBeDisabled();
+    expect(screen.getByLabelText(/edad/i)).toBeDisabled();
+    expect(screen.getByLabelText(/hemoglobina/i)).toBeDisabled();
+    // Disarming restores the full form with the draft intact.
+    fireEvent.click(
+      screen.getByRole("button", { name: /seguir editando/i }),
+    );
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^nombre/i)).toBeEnabled();
+    expect(screen.getByLabelText(/edad/i)).toBeEnabled();
+    expect(screen.getByLabelText(/hemoglobina/i)).toBeEnabled();
+    expect(screen.getByLabelText(/^nombre/i)).toHaveValue("Cambiado");
     expect(document.activeElement).toBe(screen.getByLabelText(/^nombre/i));
   });
 
@@ -1397,13 +1440,13 @@ describe("PadronView bulk scope + print sync state", () => {
     const { container } = render(<PadronView />);
     const header = container.querySelector(".padron-print-header");
     expect(header).not.toBeNull();
-    expect(header).toHaveTextContent("2 pendientes por sincronizar");
-    // Absolute generation stamp (fecha + hora), never a frozen relative
-    // receipt: "hace X" on paper would lie within minutes.
+    // Paper reuses the chip vocabulary verbatim: pending count + receipt.
+    expect(header).toHaveTextContent("2 por sincronizar");
+    expect(header).toHaveTextContent("Aún sin sincronizar");
+    // Absolute generation stamp (fecha + hora) anchors the frozen line.
     expect(header).toHaveTextContent(/impreso:/i);
     expect(header?.textContent).toMatch(/\d{1,2}:\d{2}/);
     expect(header).not.toHaveTextContent(/hace/i);
-    expect(header).not.toHaveTextContent("Sin sincronizar aún");
   });
 
   it("prints the clean state with the same generation stamp", () => {
@@ -1414,13 +1457,11 @@ describe("PadronView bulk scope + print sync state", () => {
     recordPull(Date.now() - 125_000);
     const { container } = render(<PadronView />);
     const header = container.querySelector(".padron-print-header");
-    expect(header).toHaveTextContent(
-      "Sin cambios pendientes de sincronización",
-    );
+    // Same two strings as the chip: local-safe status + last-sync receipt.
+    expect(header).toHaveTextContent("A salvo en este equipo");
+    expect(header).toHaveTextContent("Última sincronización hace 2 min");
     expect(header).toHaveTextContent(/impreso:/i);
     expect(header?.textContent).toMatch(/\d{1,2}:\d{2}/);
-    // The relative receipt stays on screen (the sync chip), never on paper.
-    expect(header).not.toHaveTextContent(/hace/i);
   });
 });
 

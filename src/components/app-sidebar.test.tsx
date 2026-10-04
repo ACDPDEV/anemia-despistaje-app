@@ -111,6 +111,61 @@ describe("AppSidebar footer controls", () => {
       expect(help).toHaveTextContent(step);
     }
     expect(help).toHaveTextContent(/alt\+s/i);
+    expect(help).toHaveTextContent(/alt\+g/i);
+  });
+
+  it("names the Alt+G sync shortcut in the shortcuts line", () => {
+    render(
+      <SidebarProvider>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
+    );
+    expect(screen.getByTestId("sidebar-shortcuts")).toHaveTextContent(
+      /alt\+g sincronizar/i,
+    );
+  });
+});
+
+describe("AppSidebar collapsed footer", () => {
+  it("keeps a working sync action when collapsed", () => {
+    const { add } = usePadronStore.getState();
+    add({ nombre: "Ana Torres", edadMeses: 24, nivelHemoglobina: 12.0 });
+    render(
+      <SidebarProvider defaultOpen={false}>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
+    );
+    // Icon-width: no shortcuts line, no details — but the sync action and
+    // the help entry both survive as icon buttons.
+    expect(screen.queryByTestId("sidebar-shortcuts")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-help")).not.toBeInTheDocument();
+    const action = screen.getByRole("button", { name: /^sincronizar$/i });
+    expect(action).toHaveAttribute("aria-keyshortcuts", "Alt+G");
+    expect(action.getAttribute("title")).toContain("Alt+G");
+    expect(action.getAttribute("title")).toContain("1 por sincronizar");
+  });
+
+  it("reveals the same 4 help steps behind the collapsed help control", () => {
+    render(
+      <SidebarProvider defaultOpen={false}>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
+    );
+    expect(screen.queryByTestId("sidebar-help")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("sidebar-help-collapsed"));
+    const popover = screen.getByTestId("sidebar-help-popover");
+    for (const step of [/registra/i, /duplicado/i, /sincroniza/i, /imprime/i]) {
+      expect(popover).toHaveTextContent(step);
+    }
+    expect(popover).toHaveTextContent(/alt\+g/i);
+
+    // Esc closes the popover and returns focus to its button.
+    fireEvent.keyDown(popover, { key: "Escape" });
+    expect(screen.queryByTestId("sidebar-help-popover")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(
+      screen.getByTestId("sidebar-help-collapsed"),
+    );
   });
 });
 
