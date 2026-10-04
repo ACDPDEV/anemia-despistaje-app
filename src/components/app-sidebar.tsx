@@ -61,7 +61,7 @@ type AppSidebarProps = {
 // contextual entry (same steps at the Registro cutoff hint): one exported
 // component so the branches can never drift apart. The closing scoping
 // line reads intentionally in both hosts: the sidebar footer names the
-// global steps while each view's own ¿Cómo funciona? teaches its scope
+// global steps while each view's own help disclosure teaches its scope
 // (Registro/Padrón/Panel disclosures are view-scoped), and inside the
 // Registro disclosure it names exactly the disclosure the reader just
 // opened.
@@ -79,7 +79,7 @@ export function HelpSteps() {
         sincroniza.
       </p>
       <p className="mt-1">
-        Cada vista explica lo suyo en su ¿Cómo funciona?
+        Cada vista explica lo suyo en su ayuda.
       </p>
     </>
   );
@@ -97,9 +97,10 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
   const [signOutError, setSignOutError] = useState<string | null>(null);
   // Collapsed help disclosure: icon-width users get the same 4 steps in a
   // small non-modal popover (a title tooltip cannot carry 4 lines). Toggle
-  // + Esc + blur-out-of-wrapper close it; EVERY close lands focus on the
-  // trigger (run-26 focus contract) so keyboard users never lose their
-  // place, and the heading owns the popover name through aria-labelledby.
+  // + Esc + blur-out-of-wrapper close it; ONLY Esc returns focus to the
+  // trigger (the user tabbing past an open popover is moving on
+  // deliberately — a blur-out close must never yank focus back), and the
+  // heading owns the popover name through aria-labelledby.
   const [helpOpen, setHelpOpen] = useState(false);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -173,12 +174,12 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
             className="relative flex justify-center py-1"
             onBlur={(e) => {
               // Same disarm-on-leave grammar as the padron confirms: focus
-              // leaving the wrapper closes the popover, draft-free — and
-              // the close returns focus to the trigger, same as Esc. Gated
-              // on helpOpen so tabbing past the idle button never yanks
-              // focus back (only an actual close refocuses).
+              // leaving the wrapper closes the popover, draft-free — with
+              // NO refocus (tabbing past is deliberate forward motion;
+              // yanking focus back traps the keyboard user). Only Esc
+              // returns focus to the trigger. Gated on helpOpen so tabbing
+              // past the idle button never closes anything.
               if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                if (helpOpen) helpButtonRef.current?.focus();
                 setHelpOpen(false);
               }
             }}

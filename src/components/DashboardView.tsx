@@ -399,7 +399,7 @@ export function DashboardView({
         className="text-xs text-muted-foreground"
       >
         <summary className="cursor-pointer underline-offset-4 hover:underline pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
-          ¿Cómo funciona?
+          ¿Cómo leo el panel?
         </summary>
         <ol className="mt-1 list-decimal space-y-0.5 pl-4">
           <li>La frase de triaje resume quién necesita seguimiento.</li>

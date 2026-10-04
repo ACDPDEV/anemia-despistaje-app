@@ -2243,7 +2243,8 @@ describe("PadronView contextual help (run-22 P3-3)", () => {
     seedTwo();
     render(<PadronView />);
     const help = screen.getByTestId("padron-help");
-    expect(help).toHaveTextContent(/¿cómo funciona\?/i);
+    // Per-view stem (run-27 P3-2): Padrón asks "¿Cómo gestiono el padrón?".
+    expect(help).toHaveTextContent(/¿cómo gestiono el padrón\?/i);
     // View-scoped copy (bulk scope, confirm + undo, sync, export/print) —
     // never the capture steps verbatim.
     for (const step of [
@@ -2263,7 +2264,8 @@ describe("PadronView contextual help (run-22 P3-3)", () => {
     expect(screen.getByText(/no hay pacientes registrados/i)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     const help = screen.getByTestId("padron-help");
-    expect(help).toHaveTextContent(/¿cómo funciona\?/i);
+    // Same per-view stem in the empty branch (run-27 P3-2).
+    expect(help).toHaveTextContent(/¿cómo gestiono el padrón\?/i);
     // Same view-scoped copy as the populated branch, never a second text.
     for (const step of [
       /solo alcanzan lo visible/i,

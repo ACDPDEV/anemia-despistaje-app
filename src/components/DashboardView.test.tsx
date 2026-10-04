@@ -492,12 +492,13 @@ describe("DashboardView", () => {
     }
   });
 
-  it("teaches the panel behind a quiet ¿Cómo funciona? disclosure", () => {
+  it("teaches the panel behind a quiet ¿Cómo leo el panel? disclosure", () => {
     seedPadron();
     render(<DashboardView />);
     const help = screen.getByTestId("dashboard-help");
     expect(help.tagName).toBe("DETAILS");
-    expect(help).toHaveTextContent(/¿cómo funciona\?/i);
+    // Per-view stem (run-27 P3-2): Panel asks "¿Cómo leo el panel?".
+    expect(help).toHaveTextContent(/¿cómo leo el panel\?/i);
     // View-scoped copy: triaje sentence, risk hues, collapsed details,
     // tombstone totals.
     for (const line of [

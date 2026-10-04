@@ -134,7 +134,7 @@ describe("AppSidebar footer controls", () => {
     expect(help).toHaveTextContent(/alt\+s/i);
     expect(help).toHaveTextContent(/alt\+g/i);
     // View-scoped entries are named as intentional scoping, not drift:
-    // each view teaches its own scope in its own ¿Cómo funciona?
+    // each view teaches its own scope in its own help disclosure.
     expect(help).toHaveTextContent(/cada vista explica lo suyo/i);
   });
 
@@ -202,10 +202,10 @@ describe("AppSidebar collapsed footer", () => {
     );
   });
 
-  it("returns focus to the trigger when blur closes the popover", () => {
-    // run-26 P3-1 focus contract: EVERY close lands focus on the trigger,
-    // blur-out-of-wrapper included (gated on actually being open, so an
-    // idle tab-past never yanks focus back).
+  it("closes the popover on blur WITHOUT yanking focus back", () => {
+    // run-27 P2-2 (harden): tabbing past an open popover is deliberate
+    // forward motion — the blur-out close must not refocus the trigger.
+    // Refocus happens ONLY on Esc (pinned in the test above).
     render(
       <SidebarProvider defaultOpen={false}>
         <AppSidebar active="register" onNavigate={vi.fn()} />
@@ -214,12 +214,27 @@ describe("AppSidebar collapsed footer", () => {
     fireEvent.click(screen.getByTestId("sidebar-help-collapsed"));
     expect(screen.getByTestId("sidebar-help-popover")).toBeInTheDocument();
 
+    const trigger = screen.getByTestId("sidebar-help-collapsed");
     const wrapper = screen.getByTestId("sidebar-help-popover").parentElement!;
     fireEvent.blur(wrapper, { relatedTarget: document.body });
     expect(screen.queryByTestId("sidebar-help-popover")).not.toBeInTheDocument();
-    expect(document.activeElement).toBe(
-      screen.getByTestId("sidebar-help-collapsed"),
+    // Focus stayed where the user sent it — never yanked back.
+    expect(document.activeElement).not.toBe(trigger);
+  });
+
+  it("toggles the popover closed by clicking the trigger again", () => {
+    // run-27 P2-2: the toggle path still behaves — open, click again,
+    // closed, no focus weirdness.
+    render(
+      <SidebarProvider defaultOpen={false}>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
     );
+    const trigger = screen.getByTestId("sidebar-help-collapsed");
+    fireEvent.click(trigger);
+    expect(screen.getByTestId("sidebar-help-popover")).toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(screen.queryByTestId("sidebar-help-popover")).not.toBeInTheDocument();
   });
 
   it("unmounts closed Sheet content so Alt+G never targets a hidden chip", () => {

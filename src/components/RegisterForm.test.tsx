@@ -155,15 +155,23 @@ describe("RegisterForm", () => {
     ).toBeInTheDocument();
   });
 
-  it("cues the capture-moment triage under the cutoff hint", () => {
-    // run-26 P3-2: bands alone don't say what to do — one quiet line sends
-    // Moderada/Severa to the Panel. Same hint styling, no new visual voice.
+  it("cues the capture-moment triage inside the help disclosure, not the hint", () => {
+    // run-27 P2-1 (distill): the visible hb-hint holds 3 spans (example,
+    // comma, cutoffs) with margin; the triage cue lives on demand inside
+    // the ¿Cómo registro? disclosure. Same Spanish copy, verbatim.
     render(<RegisterForm />);
     const triage = screen.getByTestId("hb-triage");
     expect(triage).toHaveTextContent(
       "Moderada o Severa → seguimiento en el Panel",
     );
-    expect(triage.closest("[id='hb-hint']")).not.toBeNull();
+    // On demand: inside the disclosure body, outside the field hint.
+    const help = screen.getByTestId("register-help");
+    expect(help).toContainElement(triage);
+    expect(triage.closest("[id='hb-hint']")).toBeNull();
+    // Visible hint keeps margin: exactly 3 spans (example, comma, cutoffs).
+    const hint = document.getElementById("hb-hint")!;
+    expect(hint.querySelectorAll(":scope > span")).toHaveLength(3);
+    expect(hint).not.toHaveTextContent(/seguimiento en el panel/i);
   });
 
   it("flags only the offending field with a wired aria-describedby", () => {
@@ -351,9 +359,8 @@ describe("RegisterForm", () => {
   it("offers the same 4 help steps beside the Hb cutoffs, quietly", () => {
     render(<RegisterForm />);
     const help = screen.getByTestId("register-help");
-    // One quiet line under the cutoff hint: muted, small, never competing
-    // with the form.
-    expect(help).toHaveTextContent(/¿cómo funciona\?/i);
+    // Per-view stem (run-27 P3-2): Registro asks "¿Cómo registro?".
+    expect(help).toHaveTextContent(/¿cómo registro\?/i);
     expect(help.className).toMatch(/text-muted-foreground/);
     expect(help.className).toMatch(/text-xs/);
     // SAME steps as the sidebar footer, verbatim.
@@ -362,8 +369,10 @@ describe("RegisterForm", () => {
     }
     expect(help).toHaveTextContent(/alt\+s/i);
     expect(help).toHaveTextContent(/alt\+g/i);
+    // The triage cue lives here on demand (run-27 P2-1), verbatim.
+    expect(help).toHaveTextContent(/moderada o severa → seguimiento en el panel/i);
     // Shared HelpSteps: the view-scoping line reads intentionally here
-    // too — this disclosure IS Registro's own ¿Cómo funciona?
+    // too — this disclosure IS Registro's own help.
     expect(help).toHaveTextContent(/cada vista explica lo suyo/i);
     // Outside the Hb hint wiring: the disclosure is its own stop, not
     // field-hint noise on every Hb focus.

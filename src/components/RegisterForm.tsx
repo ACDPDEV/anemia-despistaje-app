@@ -39,6 +39,10 @@ export function RegisterForm() {
   // setTimeout 0 so the success announcer settles first.
   const nombreRef = useRef<HTMLInputElement>(null);
 
+  // Audit: Spanish JS validation is the sole enforcement of clinical
+  // invariants (6–59, Hb>0, cap 100); native min/max/step are advisory.
+  // Any refactor weakening these checks removes the bound entirely —
+  // tests must stay green.
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLastRegistered(null);
@@ -184,9 +188,6 @@ export function RegisterForm() {
             <span className="block" data-testid="hb-cutoffs">
               {HB_CUTOFF_LABEL}
             </span>
-            <span className="block" data-testid="hb-triage">
-              Moderada o Severa → seguimiento en el Panel
-            </span>
           </FieldDescription>
           {/* Contextual help at the most-confusing moment (the Hb cutoffs):
               the SAME 4 steps as the sidebar footer, behind one quiet
@@ -199,9 +200,12 @@ export function RegisterForm() {
             className="text-xs text-muted-foreground"
           >
             <summary className="cursor-pointer underline-offset-4 hover:underline pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
-              ¿Cómo funciona?
+              ¿Cómo registro?
             </summary>
             <HelpSteps />
+            <p className="mt-1" data-testid="hb-triage">
+              Moderada o Severa → seguimiento en el Panel
+            </p>
           </details>
           {hbError && <FieldError id="hb-error">{hbError}</FieldError>}
         </Field>

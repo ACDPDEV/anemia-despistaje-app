@@ -105,7 +105,7 @@ function PadronHelpDetails() {
       className="text-xs text-muted-foreground"
     >
       <summary className="cursor-pointer underline-offset-4 hover:underline pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
-        ¿Cómo funciona?
+        ¿Cómo gestiono el padrón?
       </summary>
       <ol className="mt-1 list-decimal space-y-0.5 pl-4">
         <li>Selecciona en la vista: las acciones solo alcanzan lo visible.</li>
@@ -1333,6 +1333,10 @@ function PadronEditRow({
   const hbErrorId = `hb-${paciente.id}-error`;
 
   function handleSave() {
+    // Audit: Spanish JS validation is the sole enforcement of clinical
+    // invariants (6–59, Hb>0, cap 100); native min/max/step are advisory.
+    // Any refactor weakening these checks removes the bound entirely —
+    // tests must stay green.
     const edadMeses = Number(edad);
     const nivelHemoglobina = parseHemoglobina(hb);
     const nextNombreError =
