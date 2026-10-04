@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Cloud, CloudOff, RefreshCw } from "lucide-react";
 import { usePadronStore } from "../stores/padronStore";
 import { useOnline } from "../hooks/useOnline";
 import { createSupabaseSyncTable, filterUnchangedIds, pushDirty } from "../lib/sync";
@@ -21,8 +22,10 @@ import { toSpanishErrorMessage } from "../lib/errorMessages";
 // guardedPull (cooldown + in-flight); sequential on purpose because
 // guardedPull re-enters runGuarded and would report in-flight inside it.
 // Spanish copy, theme tokens, no animation, no toasts: failure speaks
-// through an inline message with a retry action.
-export function SyncStatusChip() {
+// through an inline message with a retry action. Collapsed (icon-width
+// sidebar) renders an icon-with-badge plus the title tooltip so the footer
+// never clips; the full text, receipt, and error lines return expanded.
+export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   const pacientes = usePadronStore((s) => s.pacientes);
   const online = useOnline();
   const [syncing, setSyncing] = useState(isSyncing);
@@ -163,6 +166,33 @@ export function SyncStatusChip() {
   // Mirrors the full status so the collapsed (icon-only) sidebar clipping
   // stays discoverable through the native tooltip.
   const title = error ? `${text} · ${error}` : `${text} · ${receipt}`;
+
+  // Icon-only form for the collapsed sidebar: same title composition, a
+  // pending-count badge, and an accessible name so the status survives
+  // without the clipped text lines.
+  if (collapsed) {
+    const Icon = !online ? CloudOff : syncing ? RefreshCw : Cloud;
+    return (
+      <div
+        data-testid="sync-status-chip"
+        title={title}
+        className="flex justify-center py-1"
+      >
+        <span className="relative inline-flex" role="status" aria-label={text}>
+          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+          {pending > 0 && (
+            <span
+              data-testid="sync-pending-badge"
+              aria-hidden="true"
+              className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[10px] font-medium text-primary-foreground tabular-nums"
+            >
+              {pending}
+            </span>
+          )}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div data-testid="sync-status-chip" title={title} className="flex flex-col gap-1 px-2">

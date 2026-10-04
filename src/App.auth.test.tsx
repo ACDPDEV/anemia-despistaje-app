@@ -84,6 +84,59 @@ describe("App auth gating", () => {
     expect(mockedAuth.signOut).toHaveBeenCalledTimes(1);
   });
 
+  it("disables Cerrar sesión while signing out and labels the pending state", async () => {
+    mockedAuth.isAuthConfigured.mockReturnValue(true);
+    mockedAuth.getSession.mockResolvedValue({
+      access_token: "tok",
+    } as never);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockedAuth.signOut.mockImplementationOnce(() => gate);
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole("navigation")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /cerrar sesión/i }));
+
+    const pending = screen.getByRole("button", { name: /cerrando sesión/i });
+    expect(pending).toBeDisabled();
+    release();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /cerrar sesión/i }),
+      ).not.toBeDisabled(),
+    );
+  });
+
+  it("voices a sign-out failure in Spanish with a retry action", async () => {
+    mockedAuth.isAuthConfigured.mockReturnValue(true);
+    mockedAuth.getSession.mockResolvedValue({
+      access_token: "tok",
+    } as never);
+    mockedAuth.signOut.mockRejectedValueOnce(new Error("Failed to fetch"));
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole("navigation")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /cerrar sesión/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Sin conexión. Revisa tu red e inténtalo de nuevo.",
+    );
+    expect(alert.textContent).not.toMatch(/fetch/i);
+    const retry = screen.getByRole("button", { name: /reintentar/i });
+    fireEvent.click(retry);
+    expect(mockedAuth.signOut).toHaveBeenCalledTimes(2);
+    await waitFor(() =>
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+    );
+  });
+
   it("hides Cerrar sesión when auth is not configured", () => {
     mockedAuth.isAuthConfigured.mockReturnValue(false);
     render(<App />);

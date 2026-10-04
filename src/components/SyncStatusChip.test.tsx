@@ -168,6 +168,34 @@ describe("SyncStatusChip", () => {
     );
   });
 
+  it("collapses to an icon with badge and title when collapsed", () => {
+    seedDirty();
+    render(<SyncStatusChip collapsed />);
+
+    const chip = screen.getByTestId("sync-status-chip");
+    expect(chip).toHaveAttribute(
+      "title",
+      "1 por sincronizar · Sin sincronizar aún",
+    );
+    expect(screen.getByTestId("sync-pending-badge")).toHaveTextContent("1");
+    // Full text lines stay out of the clipped icon-width footer.
+    expect(screen.queryByTestId("sync-receipt")).not.toBeInTheDocument();
+    expect(within(chip).getByRole("status")).toHaveAttribute(
+      "aria-label",
+      "1 por sincronizar",
+    );
+  });
+
+  it("hides the badge when nothing is pending in collapsed mode", () => {
+    render(<SyncStatusChip collapsed />);
+
+    expect(screen.queryByTestId("sync-pending-badge")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
+      "title",
+      "Guardado en este equipo · sin sincronizar · Sin sincronizar aún",
+    );
+  });
+
   it("runs the guarded sync path and clears the pending count", async () => {
     const id = seedDirty();
     pushMock.mockResolvedValue({

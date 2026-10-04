@@ -253,6 +253,41 @@ describe("DashboardView", () => {
     expect(within(older).getByText("2")).toBeInTheDocument();
   });
 
+  it("names each age band's worst case in visible text matching the sr-only table", () => {
+    seedPadron();
+    render(<DashboardView />);
+
+    const text = screen.getByTestId("age-risk-text");
+    expect(text).not.toHaveClass("sr-only");
+    expect(text.className).toMatch(/text-muted-foreground/);
+    // Same ageRisk source as the bars and the sr-only table: 6-23 worst is
+    // Leve (Rio, 10.5), 24-59 worst is Severa (Sol, 6.0).
+    const table = screen.getByTestId("age-data-table");
+    for (const band of ["6-23", "24-59"]) {
+      const row = within(table).getByText(band).closest("tr")!;
+      const cells = within(row).getAllByRole("cell");
+      const worst = cells[cells.length - 1].textContent;
+      expect(text).toHaveTextContent(`${band}: ${worst}`);
+    }
+  });
+
+  it("composes the disclosure body as grids at sm: bands 4-up, charts side-by-side", () => {
+    seedPadron();
+    render(<DashboardView />);
+
+    // Bands already lived in a 2×2 grid: keep it on phones, 4-up from sm.
+    const bands = screen.getByTestId("band-counts");
+    expect(bands.className).toMatch(/grid-cols-2/);
+    expect(bands.className).toMatch(/sm:grid-cols-4/);
+    // Charts stack on phones, sit side-by-side from sm.
+    const grid = screen.getByTestId("charts-grid");
+    expect(grid.className).toMatch(/grid-cols-1/);
+    expect(grid.className).toMatch(/sm:grid-cols-2/);
+    expect(grid).toContainElement(screen.getByTestId("hb-chart"));
+    expect(grid).toContainElement(screen.getByTestId("age-chart"));
+    expect(screen.getByTestId("charts-disclosure")).toContainElement(grid);
+  });
+
   it("shows every KPI card with value plus exactly one Spanish caption", () => {
     seedPadron();
     render(<DashboardView />);

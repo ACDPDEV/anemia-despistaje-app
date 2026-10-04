@@ -162,6 +162,22 @@ describe("App sidebar shell", () => {
     ).toBe("expanded");
   });
 
+  it("hides the shortcut line when collapsed but keeps the sync title", () => {
+    render(<App />);
+    expect(screen.getByTestId("sidebar-shortcuts")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /alternar barra lateral/i }));
+    expect(screen.queryByTestId("sidebar-shortcuts")).not.toBeInTheDocument();
+    // The collapsed chip keeps its composed title tooltip.
+    expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
+      "title",
+      "Guardado en este equipo · sin sincronizar · Sin sincronizar aún",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /alternar barra lateral/i }));
+    expect(screen.getByTestId("sidebar-shortcuts")).toBeInTheDocument();
+  });
+
   it("dismisses the overlay after selecting a view on small screens", () => {
     setViewport(375, true);
     render(<App />);
