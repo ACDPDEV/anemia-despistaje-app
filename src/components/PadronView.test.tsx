@@ -103,7 +103,11 @@ describe("PadronView", () => {
     render(<PadronView />);
     const row = rowByName("Luis Paz");
     fireEvent.click(within(row).getByRole("button", { name: /eliminar/i }));
-    expect(usePadronStore.getState().pacientes).toHaveLength(1);
+    const { pacientes } = usePadronStore.getState();
+    expect(pacientes).toHaveLength(2);
+    const tombstone = pacientes.find((p) => p.nombre === "Luis Paz")!;
+    expect(tombstone.deletedAt).toEqual(expect.any(String));
+    expect(tombstone.dirty).toBe(true);
     expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
     expect(screen.getByText("Ana Torres")).toBeInTheDocument();
   });
@@ -249,6 +253,19 @@ describe("PadronView export actions", () => {
     fireEvent.change(screen.getByLabelText(/buscar/i), {
       target: { value: "ana" },
     });
+    fireEvent.click(screen.getByRole("button", { name: /exportar csv/i }));
+    const text = await readBlobText(seen.blob!);
+    expect(text).toContain("Ana Torres");
+    expect(text).not.toContain("Luis Paz");
+    expect(text).toContain("# total: 1");
+  });
+
+  it("excludes soft-deleted tombstones from the CSV export (B2)", async () => {
+    seedTwo();
+    const id = usePadronStore.getState().pacientes[1].id;
+    usePadronStore.getState().remove(id);
+    const { seen } = mockDownloadSeam();
+    render(<PadronView />);
     fireEvent.click(screen.getByRole("button", { name: /exportar csv/i }));
     const text = await readBlobText(seen.blob!);
     expect(text).toContain("Ana Torres");

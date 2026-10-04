@@ -24,12 +24,14 @@ const COLUMN_COUNT = 5;
 
 // Filterable register: shadcn Table + single Input filter over nombre.
 // Row edit/delete reuse the existing store update/remove selectors.
+// Tombstones (deletedAt set) are hidden: remove() is a dirty soft-delete
+// kept for sync push, never a visible row (B2).
 export function PadronView({
   onEmptyRegister,
 }: {
   onEmptyRegister?: () => void;
 }) {
-  const pacientes = usePadronStore((s) => s.pacientes);
+  const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
   const countByDiagnosis = usePadronStore((s) => s.countByDiagnosis);
   const [filter, setFilter] = useState("");
   const [gravesPrimero, setGravesPrimero] = useState(false);

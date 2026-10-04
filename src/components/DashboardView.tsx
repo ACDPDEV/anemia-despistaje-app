@@ -67,10 +67,11 @@ export function toHbBandData(
 }
 
 // Screening overview: KPI cards, Hb distribution bars, and age-group bars.
-// All values derive from existing store selectors plus the pure
-// presentation helper groupByAgeBand. Spanish labels, English identifiers.
+// All values derive from visible rows only: tombstones (deletedAt set)
+// are excluded from total, age bands, and (via selectors) counts/average.
+// Spanish labels, English identifiers.
 export function DashboardView() {
-  const pacientes = usePadronStore((s) => s.pacientes);
+  const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
   const countByDiagnosis = usePadronStore((s) => s.countByDiagnosis);
   const averageHb = usePadronStore((s) => s.averageHb);
 

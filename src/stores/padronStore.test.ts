@@ -38,6 +38,40 @@ describe("padronStore", () => {
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
 
+  it("rejects non-integer and NaN ages with an edad message (B1)", () => {
+    expect(() => addPatient({ edadMeses: 6.5 })).toThrow(/edad/i);
+    expect(() => addPatient({ edadMeses: NaN })).toThrow(/edad/i);
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
+  });
+
+  it("rejects non-integer ages on update with an edad message (B1)", () => {
+    addPatient();
+    const id = usePadronStore.getState().pacientes[0].id;
+    expect(() => usePadronStore.getState().update(id, { edadMeses: 6.5 })).toThrow(/edad/i);
+    expect(() => usePadronStore.getState().update(id, { edadMeses: NaN })).toThrow(/edad/i);
+    expect(usePadronStore.getState().pacientes[0].edadMeses).toBe(24);
+  });
+
+  it("soft-deletes: remove keeps a dirty tombstone excluded from counts and average (B2)", () => {
+    addPatient({ nivelHemoglobina: 12.0 });
+    addPatient({ nombre: "Luis Paz", nivelHemoglobina: 6.5 });
+    const id = usePadronStore.getState().pacientes[0].id;
+    usePadronStore.getState().remove(id);
+
+    const { pacientes } = usePadronStore.getState();
+    expect(pacientes).toHaveLength(2);
+    const tombstone = pacientes.find((p) => p.id === id)!;
+    expect(tombstone.deletedAt).toEqual(expect.any(String));
+    expect(tombstone.dirty).toBe(true);
+
+    const visible = pacientes.filter((p) => !p.deletedAt);
+    expect(visible).toHaveLength(1);
+    expect(usePadronStore.getState().countByDiagnosis()).toMatchObject({
+      Normal: 0,
+      "Anemia Severa": 1,
+    });
+    expect(usePadronStore.getState().averageHb()).toBeCloseTo(6.5);
+  });
   it("rejects the 101st record with a Spanish cap message", () => {
     for (let i = 0; i < MAX_PADRON; i += 1) {
       addPatient({ nombre: `Paciente ${i}`, nivelHemoglobina: 11.5 });
@@ -45,6 +79,26 @@ describe("padronStore", () => {
     expect(usePadronStore.getState().pacientes).toHaveLength(100);
     expect(() => addPatient({ nombre: "Paciente 100" })).toThrow(/100/);
     expect(usePadronStore.getState().pacientes).toHaveLength(100);
+  });
+
+  it("frees visible capacity on soft-delete while keeping the tombstone (C1)", () => {
+    for (let i = 0; i < MAX_PADRON; i += 1) {
+      addPatient({ nombre: `Paciente ${i}`, nivelHemoglobina: 11.5 });
+    }
+    const deletedId = usePadronStore.getState().pacientes[0].id;
+    usePadronStore.getState().remove(deletedId);
+
+    addPatient({ nombre: "Paciente libre", nivelHemoglobina: 11.5 });
+
+    const { pacientes } = usePadronStore.getState();
+    expect(pacientes.filter((p) => !p.deletedAt)).toHaveLength(MAX_PADRON);
+    expect(pacientes.find((p) => p.id === deletedId)?.deletedAt).toEqual(
+      expect.any(String),
+    );
+    expect(() => addPatient({ nombre: "Paciente 101" })).toThrow(/100/);
+    expect(
+      usePadronStore.getState().pacientes.filter((p) => !p.deletedAt),
+    ).toHaveLength(MAX_PADRON);
   });
 
   it("recomputes diagnosis when hemoglobin is updated", () => {
@@ -124,5 +178,70 @@ describe("padronStore", () => {
   it("stays silent for different names", () => {
     addPatient({ nombre: "Ana Ruiz", nivelHemoglobina: 12.0 });
     expect(findPossibleDuplicates("Ana Torres")).toHaveLength(0);
+  });
+
+  it("excludes tombstones from duplicate signals (B2)", () => {
+    addPatient({ nombre: "Borrado Uno", nivelHemoglobina: 12.0 });
+    const id = usePadronStore.getState().pacientes[0].id;
+    usePadronStore.getState().remove(id);
+    expect(findPossibleDuplicates("Borrado Uno")).toHaveLength(0);
+  });
+
+  describe("purgeSyncedTombstones (GC)", () => {
+    function setupTombstones() {
+      const preexisting = new Set(usePadronStore.getState().pacientes.map((p) => p.id));
+      addPatient({ nombre: "Limpio", nivelHemoglobina: 12.0 });
+      addPatient({ nombre: "Sucio", nivelHemoglobina: 11.0 });
+      const [cleanId, dirtyId] = usePadronStore
+        .getState()
+        .pacientes.map((p) => p.id)
+        .filter((id) => !preexisting.has(id));
+      usePadronStore.getState().remove(cleanId);
+      usePadronStore.getState().remove(dirtyId);
+      // Simulate a successful push of the first delete: clean tombstone.
+      usePadronStore.setState((state) => ({
+        pacientes: state.pacientes.map((p) =>
+          p.id === cleanId ? { ...p, dirty: false } : p,
+        ),
+      }));
+      return { cleanId, dirtyId };
+    }
+
+    it("purges clean tombstones (deletedAt set AND dirty=false)", () => {
+      const { cleanId } = setupTombstones();
+      usePadronStore.getState().purgeSyncedTombstones();
+      const { pacientes } = usePadronStore.getState();
+      expect(pacientes.find((p) => p.id === cleanId)).toBeUndefined();
+    });
+
+    it("keeps dirty tombstones (deletedAt set but still queued for push)", () => {
+      const { dirtyId } = setupTombstones();
+      usePadronStore.getState().purgeSyncedTombstones();
+      const tombstone = usePadronStore.getState().pacientes.find((p) => p.id === dirtyId)!;
+      expect(tombstone.deletedAt).toEqual(expect.any(String));
+      expect(tombstone.dirty).toBe(true);
+    });
+
+    it("leaves visible rows and their selectors untouched", () => {
+      addPatient({ nombre: "Visible", nivelHemoglobina: 12.5 });
+      const visibleId = usePadronStore.getState().pacientes[0].id;
+      setupTombstones();
+      const before = usePadronStore
+        .getState()
+        .pacientes.filter((p) => !p.deletedAt)
+        .map((p) => p.id);
+      usePadronStore.getState().purgeSyncedTombstones();
+      const state = usePadronStore.getState();
+      const visible = state.pacientes.find((p) => p.id === visibleId)!;
+      expect(visible.nombre).toBe("Visible");
+      expect(visible.deletedAt).toBeNull();
+      expect(state.pacientes.filter((p) => !p.deletedAt).map((p) => p.id)).toEqual(before);
+      expect(state.averageHb()).toBeCloseTo(
+        before.reduce(
+          (acc, id) => acc + state.pacientes.find((p) => p.id === id)!.nivelHemoglobina,
+          0,
+        ) / before.length,
+      );
+    });
   });
 });

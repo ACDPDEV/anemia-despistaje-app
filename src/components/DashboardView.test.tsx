@@ -111,6 +111,18 @@ describe("DashboardView", () => {
     }
   });
 
+  it("excludes soft-deleted tombstones from KPIs and age bands (B2)", () => {
+    seedPadron();
+    const id = usePadronStore.getState().pacientes[4].id;
+    usePadronStore.getState().remove(id);
+    render(<DashboardView />);
+    expect(screen.getByTestId("kpi-total")).toHaveTextContent("4");
+    expect(screen.getByTestId("kpi-modsev")).toHaveTextContent("1");
+    const chart = screen.getByTestId("age-chart");
+    expect(within(chart).getByText("3")).toBeInTheDocument();
+    expect(within(chart).getByText("1")).toBeInTheDocument();
+  });
+
   it("shows the empty state with em-dash and Sin registros", () => {    render(<DashboardView />);
 
     expect(screen.getByText("Total de pacientes")).toBeInTheDocument();
