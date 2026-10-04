@@ -364,7 +364,7 @@ export function DashboardView({
                 naming each band's worst case from the same ageRisk source
                 the bars and the sr-only table read. Small, muted, theme
                 tokens; the sr-only table stays canonical. */}
-            <p data-testid="age-risk-text" className="mt-2 text-xs text-muted-foreground">
+            <p data-testid="age-risk-text" className="mt-2 text-sm text-muted-foreground">
               {AGE_BANDS.map((band) => `${band}: ${ageRisk[band]}`).join(" · ")}
             </p>
             <table data-testid="age-data-table" className="sr-only">

@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
 import { recordPull, resetSyncGuardForTests } from "../lib/syncGuard";
+import { resetSupabaseClientForTests } from "../lib/supabase";
+import { SyncStatusChip } from "./SyncStatusChip";
 import { PadronView } from "./PadronView";
 
 beforeEach(() => {
@@ -2051,5 +2053,167 @@ describe("PadronView dismiss grammar (P3)", () => {
     expect(
       screen.getByRole("button", { name: /descartar cambios/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("PadronView phone sync affordance (run-22 P2-2)", () => {
+  function setOnline(value: boolean) {
+    Object.defineProperty(window.navigator, "onLine", {
+      value,
+      configurable: true,
+    });
+  }
+
+  // The repo .env carries Supabase credentials: without this the sync
+  // clicks below would attempt a real network push. Force the
+  // unconfigured state (same approach as App.test.tsx) so the shared
+  // handler fails fast with the honest unconfigured cause.
+  beforeEach(() => {
+    vi.stubEnv("VITE_SUPABASE_URL", "");
+    vi.stubEnv("VITE_SUPABASE_ANON_KEY", "");
+    resetSupabaseClientForTests();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    setOnline(true);
+  });
+
+  it("renders a phone-only sync row with the shared pending vocabulary", () => {
+    resetSyncGuardForTests();
+    setOnline(true);
+    seedTwo();
+    render(<PadronView />);
+    try {
+      const row = screen.getByTestId("padron-sync-phone");
+      // Phone surface only (CSS contract, same pin grammar as the mobile
+      // select-all): off desktop, off paper.
+      expect(row.className).toMatch(/sm:hidden/);
+      expect(row.className).toMatch(/print:hidden/);
+      // Same syncGuard strings as the chip, never a divergent phrasing.
+      expect(row).toHaveTextContent("2 por sincronizar");
+      const action = within(row).getByRole("button", {
+        name: /^sincronizar$/i,
+      });
+      expect(action).toHaveAttribute("data-sync-action", "true");
+      expect(action).toHaveAttribute("aria-keyshortcuts", "Alt+G");
+      expect(action.getAttribute("title")).toContain("Alt+G");
+    } finally {
+      setOnline(true);
+    }
+  });
+
+  it("stays quiet when clean and online, like the chip", () => {
+    resetSyncGuardForTests();
+    setOnline(true);
+    seedTwo();
+    const ids = usePadronStore.getState().pacientes.map((p) => p.id);
+    usePadronStore.getState().markSynced(ids);
+    render(<PadronView />);
+    expect(screen.queryByTestId("padron-sync-phone")).not.toBeInTheDocument();
+  });
+
+  it("names the offline state with no action, mirroring the chip", () => {
+    resetSyncGuardForTests();
+    setOnline(false);
+    seedTwo();
+    render(<PadronView />);
+    try {
+      const row = screen.getByTestId("padron-sync-phone");
+      expect(row).toHaveTextContent(/sin conexión/i);
+      expect(row).toHaveTextContent("2 por sincronizar");
+      expect(
+        within(row).queryByRole("button", { name: /sincronizar/i }),
+      ).not.toBeInTheDocument();
+    } finally {
+      setOnline(true);
+    }
+  });
+
+  it("runs the shared sync handler from the phone button", async () => {
+    resetSyncGuardForTests();
+    setOnline(true);
+    seedTwo();
+    render(<PadronView />);
+    try {
+      fireEvent.click(
+        within(screen.getByTestId("padron-sync-phone")).getByRole("button", {
+          name: /^sincronizar$/i,
+        }),
+      );
+      // Offline-first test shell: no Supabase credentials, so the shared
+      // handler runs and the phone button flips to retry — proving the
+      // phone surface fires the real sync, not a stub.
+      expect(
+        await within(screen.getByTestId("padron-sync-phone")).findByRole(
+          "button",
+          { name: /reintentar/i },
+        ),
+      ).toHaveAttribute("data-sync-action", "true");
+    } finally {
+      setOnline(true);
+    }
+  });
+
+  it("keeps Alt+G working with both surfaces mounted (shell query resolves)", async () => {
+    resetSyncGuardForTests();
+    setOnline(true);
+    seedTwo();
+    render(
+      <>
+        <SyncStatusChip />
+        <PadronView />
+      </>,
+    );
+    try {
+      // Both surfaces render an enabled action: the expanded chip and the
+      // phone row share one hook, one tag, one enabled grammar.
+      const actions = document.querySelectorAll(
+        'button[data-sync-action="true"]:not([disabled])',
+      );
+      expect(actions).toHaveLength(2);
+      // The exact shell query still resolves to an enabled button — Alt+G
+      // fires the first in DOM order (the sidebar instance); both run the
+      // same guarded handler, so either target syncs.
+      const shellTarget = document.querySelector<HTMLButtonElement>(
+        'button[data-sync-action="true"]:not([disabled])',
+      );
+      expect(shellTarget).not.toBeNull();
+      expect(shellTarget).not.toBeDisabled();
+      fireEvent.click(shellTarget!);
+      // The shared handler ran: the chip surfaces the unconfigured cause.
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        /no está configurada/i,
+      );
+    } finally {
+      setOnline(true);
+    }
+  });
+});
+
+describe("PadronView contextual help (run-22 P3-3)", () => {
+  it("teaches the view-scoped steps behind a quiet disclosure", () => {
+    seedTwo();
+    render(<PadronView />);
+    const help = screen.getByTestId("padron-help");
+    expect(help).toHaveTextContent(/¿cómo funciona\?/i);
+    // View-scoped copy (bulk scope, confirm + undo, sync, export/print) —
+    // never the capture steps verbatim.
+    for (const step of [
+      /solo alcanzan lo visible/i,
+      /deshacer recupera/i,
+      /alt\+g/i,
+      /exporta o imprime/i,
+    ]) {
+      expect(help).toHaveTextContent(step);
+    }
+    // Quiet styling matching RegisterForm's disclosure.
+    expect(help.className).toMatch(/text-muted-foreground/);
+  });
+
+  it("stays out of the empty state (nothing to select, sync, or export yet)", () => {
+    render(<PadronView />);
+    expect(screen.getByText(/no hay pacientes registrados/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("padron-help")).not.toBeInTheDocument();
   });
 });

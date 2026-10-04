@@ -60,8 +60,7 @@ beforeEach(() => {
 });
 
 describe("AppSidebar nav shortcuts", () => {
-  it("exposes Alt+1/2/3 on the nav buttons even when collapsed", () => {
-    render(
+  it("exposes Alt+1/2/3 on the nav buttons even when collapsed", () => {    render(
       <SidebarProvider>
         <AppSidebar active="register" onNavigate={vi.fn()} />
       </SidebarProvider>,
@@ -78,6 +77,25 @@ describe("AppSidebar nav shortcuts", () => {
       // Native title carries the shortcut where the shortcuts line hides.
       expect(button.getAttribute("title")).toContain(keys);
     }
+  });
+});
+
+describe("AppSidebar nav landmark (run-22 P2-1)", () => {
+  it("exposes exactly one labelled nav landmark with the visible label non-landmark", () => {
+    render(
+      <SidebarProvider>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
+    );
+
+    // ONE landmark, one name: the named <nav> owns navigation.
+    const navs = screen.getAllByRole("navigation");
+    expect(navs).toHaveLength(1);
+    expect(navs[0]).toHaveAccessibleName("Principal");
+    // The visible "Menú" text stays for sighted users but never forms a
+    // second labelled landmark.
+    const menu = screen.getByText("Menú");
+    expect(menu).toHaveAttribute("aria-hidden", "true");
   });
 });
 

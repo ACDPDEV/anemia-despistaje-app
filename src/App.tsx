@@ -80,10 +80,13 @@ export default function App() {
   // Alt+S is scoped to the register tab and stands down while a padron
   // guard is armed (see isPadronGuardArmed above). Alt+G works from any tab
   // but stands down under the same guard, and only while sync is
-  // actionable: the chip renders its action (tagged data-sync-action) only
-  // when online with pending work or a retryable error, and disables it
-  // mid-flight — the :not([disabled]) query respects exactly that, so the
-  // shell never invents its own enabled logic.
+  // actionable: the chip and the phone-only Padrón row render their actions
+  // (tagged data-sync-action, one shared hook) only when online with
+  // pending work or a retryable error, and disable mid-flight — the
+  // :not([disabled]) query respects exactly that, so the shell never
+  // invents its own enabled logic. With both surfaces mounted the query
+  // takes the first in DOM order (the sidebar instance); both run the same
+  // guarded handler, so either target syncs.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!event.altKey || event.ctrlKey || event.metaKey) return;

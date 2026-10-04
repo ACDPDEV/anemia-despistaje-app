@@ -37,6 +37,7 @@ import {
   SYNC_STATUS_SAFE,
 } from "../lib/syncGuard";
 import { useSlidingExpiry } from "../hooks/useSlidingExpiry";
+import { SyncActionButton, useSyncAction } from "./SyncStatusChip";
 import { XIcon } from "lucide-react";
 
 const COLUMN_COUNT = 6;
@@ -121,6 +122,11 @@ export function PadronView({
   useEffect(() => {
     return subscribeSyncState((state) => setLastSyncAt(state.lastPullAt));
   }, []);
+  // Phone-first sync affordance (layout): the sidebar footer lives inside
+  // the hamburger Sheet, so this hook is the SAME state + handler the chip
+  // uses (one vocabulary, one data-sync-action tag for Alt+G) — never a
+  // second behavior.
+  const sync = useSyncAction();
   const [filter, setFilter] = useState("");
   const [gravesPrimero, setGravesPrimero] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -649,6 +655,35 @@ export function PadronView({
           </Button>
         </div>
       </div>
+      {/* Phone-only sync row: the sidebar footer (with the sync chip) hides
+          inside the hamburger Sheet, so phones get sync on the first
+          screen — compact status text plus the shared sync action, quiet
+          when clean + online like the chip. sm:hidden keeps it off desktop
+          (the footer chip owns that surface); print:hidden keeps it off
+          paper. No second live region: on failure the button flips to
+          Reintentar with the cause in the title, mirroring the collapsed
+          chip grammar. */}
+      {(sync.pending > 0 ||
+        sync.error !== null ||
+        sync.syncing ||
+        !sync.online) && (
+        <div
+          data-testid="padron-sync-phone"
+          title={sync.title}
+          className="flex items-center gap-2 sm:hidden print:hidden"
+        >
+          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {sync.text}
+          </p>
+          {sync.showAction && (
+            <SyncActionButton
+              label={sync.buttonLabel}
+              syncing={sync.syncing}
+              onSync={sync.handleSync}
+            />
+          )}
+        </div>
+      )}
       {/* Quiet capacity signal (P3): total registered over the full store,
           never the filtered view. Muted microcopy under the title — no
           alarm styling at any count, including 100 de 100 pacientes. */}
@@ -687,6 +722,24 @@ export function PadronView({
         {visible.length}
         {fuseNotice && <> · {fuseNotice}</>}
       </p>
+      {/* View-scoped help (onboard): the Padrón confusions — bulk scope,
+          confirm + Deshacer, sync, export/print — not the capture steps.
+          Quiet details/summary mirroring RegisterForm's, always mounted
+          (unlike the bulk bar) so it teaches before the first selection. */}
+      <details
+        data-testid="padron-help"
+        className="text-xs text-muted-foreground"
+      >
+        <summary className="cursor-pointer underline-offset-4 hover:underline pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
+          ¿Cómo funciona?
+        </summary>
+        <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+          <li>Selecciona en la vista: las acciones solo alcanzan lo visible.</li>
+          <li>Eliminar pide confirmación y Deshacer recupera lo borrado.</li>
+          <li>Sincroniza con Alt+G cuando tengas conexión.</li>
+          <li>Exporta o imprime desde los botones de arriba.</li>
+        </ol>
+      </details>
       <div className="padron-filters flex flex-col gap-4">
         <Field>
           <FieldLabel htmlFor="padron-filter">Buscar por nombre</FieldLabel>

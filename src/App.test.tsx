@@ -464,4 +464,29 @@ describe("App sidebar shell", () => {
     }
     expect(popover).toHaveTextContent(/alt\+g/i);
   });
+
+  it("fires a sync with Alt+G from the Padrón tab (phone row mounted)", async () => {
+    render(<App />);
+    registerPatient();
+    fireEvent.click(screen.getByRole("button", { name: /^padrón$/i }));
+
+    // The Padrón tab mounts the phone-only sync row beside the sidebar
+    // chip; both carry data-sync-action and the shell query resolves.
+    expect(screen.getByTestId("padron-sync-phone")).toHaveTextContent(
+      "1 por sincronizar",
+    );
+    expect(
+      document.querySelector(
+        'button[data-sync-action="true"]:not([disabled])',
+      ),
+    ).not.toBeNull();
+
+    fireEvent.keyDown(window, { key: "g", altKey: true });
+
+    // Offline-first shell: no Supabase credentials here, so the sync path
+    // runs and reports the unconfigured cause — proving Alt+G fired it.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /no está configurada/i,
+    );
+  });
 });

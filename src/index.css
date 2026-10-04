@@ -16,11 +16,9 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
+    /* chart-1..5 intentionally absent (run-22 P3-1): zero consumers — the
+       charts read the severity tokens + --destructive instead, in both
+       themes. Re-add both ramps together if a chart ever needs them. */
     --color-severity-normal: var(--severity-normal);
     --color-severity-mild: var(--severity-mild);
     --color-severity-moderate: var(--severity-moderate);
@@ -72,11 +70,6 @@
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
     --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
     /* Severity hues for dashboard charts (Severa reuses --destructive so
        the chart and the destructive badge can never drift apart). */
     --severity-normal: oklch(0.62 0.14 155);
@@ -116,11 +109,6 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
     /* Dark-mode severity hues: lifted lightness keeps fills readable on
        the dark card surface without changing hue families. */
     --severity-normal: oklch(0.72 0.14 155);

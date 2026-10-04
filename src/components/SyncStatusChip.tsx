@@ -30,8 +30,32 @@ import { toSpanishErrorMessage } from "../lib/errorMessages";
 // sidebar) renders an icon-with-badge plus the title tooltip plus a sync
 // icon button (same action, Alt+G) so the footer never clips and never
 // loses the sync path; the full text, receipt, and error lines return
-// expanded.
-export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
+// expanded. The state + handler live in useSyncAction (shared with the
+// phone-only Padrón row) and the text-button JSX in SyncActionButton, so
+// no surface duplicates sync behavior.
+// Shared sync state + sync handler for every sync surface: the footer
+// chip below (expanded + collapsed) and the phone-only Padrón row. One
+// hook so the surfaces can never disagree on pending text, enabled
+// grammar, or vocabulary. Every rendered action carries data-sync-action,
+// so the Alt+G shell query fires whichever instance it finds first: the
+// sidebar Sheet content unmounts when closed (phone row wins), and with
+// the Sheet open the sidebar instance comes first in DOM order while the
+// phone row hides behind sm:hidden — the query always lands on a working,
+// visible button running this same guarded handler.
+export type SyncAction = {
+  online: boolean;
+  pending: number;
+  syncing: boolean;
+  error: string | null;
+  text: string;
+  receipt: string;
+  title: string;
+  showAction: boolean;
+  buttonLabel: string;
+  handleSync: () => Promise<void>;
+};
+
+export function useSyncAction(): SyncAction {
   const pacientes = usePadronStore((s) => s.pacientes);
   const online = useOnline();
   const [syncing, setSyncing] = useState(isSyncing);
@@ -177,6 +201,52 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
   // stays discoverable through the native tooltip.
   const title = error ? `${text} · ${error}` : `${text} · ${receipt}`;
 
+  return { online, pending, syncing, error, text, receipt, title, showAction, buttonLabel, handleSync };
+}
+
+// Shared sync button (expanded chip + phone Padrón row): same tag, same
+// shortcut, same disabled grammar. The collapsed chip keeps its own
+// icon-button JSX (different visual) but the same tag + hook handler.
+export function SyncActionButton({
+  label,
+  syncing,
+  onSync,
+}: {
+  label: string;
+  syncing: boolean;
+  onSync: () => Promise<void>;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="xs"
+      data-sync-action="true"
+      className="pointer-coarse:min-h-11"
+      disabled={syncing}
+      aria-keyshortcuts="Alt+G"
+      title={`${label} (Alt+G)`}
+      onClick={() => void onSync()}
+    >
+      {label}
+    </Button>
+  );
+}
+
+export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
+  const {
+    online,
+    pending,
+    syncing,
+    error,
+    text,
+    receipt,
+    title,
+    showAction,
+    buttonLabel,
+    handleSync,
+  } = useSyncAction();
+
   // Icon-only form for the collapsed sidebar: same title composition, a
   // pending-count badge, and an accessible name so the status survives
   // without the clipped text lines. The accessible name is STATIC apart
@@ -254,19 +324,11 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
           {text}
         </p>
         {showAction && (
-          <Button
-            type="button"
-            variant="outline"
-            size="xs"
-            data-sync-action="true"
-            className="pointer-coarse:min-h-11"
-            disabled={syncing}
-            aria-keyshortcuts="Alt+G"
-            title={`${buttonLabel} (Alt+G)`}
-            onClick={() => void handleSync()}
-          >
-            {buttonLabel}
-          </Button>
+          <SyncActionButton
+            label={buttonLabel}
+            syncing={syncing}
+            onSync={handleSync}
+          />
         )}
       </div>
       {/* Receipt line: deliberately NOT a live region. The pending-count

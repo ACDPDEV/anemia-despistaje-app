@@ -310,6 +310,9 @@ describe("DashboardView", () => {
     const text = screen.getByTestId("age-risk-text");
     expect(text).not.toHaveClass("sr-only");
     expect(text.className).toMatch(/text-muted-foreground/);
+    // Field-light carrier (run-22 P3-2): bumped to text-sm, still muted.
+    expect(text.className).toMatch(/text-sm/);
+    expect(text.className).not.toMatch(/text-xs/);
     // Same ageRisk source as the bars and the sr-only table: 6-23 worst is
     // Leve (Rio, 10.5), 24-59 worst is Severa (Sol, 6.0).
     const table = screen.getByTestId("age-data-table");

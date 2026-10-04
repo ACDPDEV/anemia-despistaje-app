@@ -123,7 +123,11 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Menú</SidebarGroupLabel>
+          {/* "Menú" is a visual heading only (aria-hidden): the shadcn
+              group label already renders a plain div, and hiding it keeps
+              the <nav aria-label="Principal"> below the sidebar's single
+              named nav landmark — one nav, one name. */}
+          <SidebarGroupLabel aria-hidden="true">Menú</SidebarGroupLabel>
           <SidebarGroupContent>
             <nav aria-label="Principal">
             <SidebarMenu>
