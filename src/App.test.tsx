@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "./stores/padronStore";
+import { resetSupabaseClientForTests } from "./lib/supabase";
 import App from "./App";
 
 function setViewport(width: number, mobileMatch: boolean) {
@@ -43,9 +44,19 @@ function registerPatient(
 }
 
 beforeEach(() => {
+  // The repo .env carries Supabase credentials, which would flip App into
+  // the auth-gated branch. These shell tests cover the offline path, so
+  // force the unconfigured state (Vite reads import.meta.env at render).
+  vi.stubEnv("VITE_SUPABASE_URL", "");
+  vi.stubEnv("VITE_SUPABASE_ANON_KEY", "");
+  resetSupabaseClientForTests();
   localStorage.clear();
   usePadronStore.getState().reset();
   setDesktopViewport();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("App sidebar shell", () => {

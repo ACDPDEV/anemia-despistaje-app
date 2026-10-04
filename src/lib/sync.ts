@@ -6,6 +6,12 @@ import type { Paciente } from "../stores/padronStore";
 // and Supabase (deferred remote replica). No auto-sync: every function runs
 // only on explicit user action. `diagnostico` is always recomputed from
 // `nivelHemoglobina` and never trusted from the remote row.
+//
+// RLS scoping note: public.pacientes rows are scoped per user by the
+// `user_id uuid default auth.uid()` column plus per-user policies
+// (see supabase/migrations/20261003000000_create_pacientes.sql). The upsert
+// below sends NO user_id: Postgres fills the DEFAULT and the INSERT/UPDATE
+// WITH CHECK policies reject spoofed ids. Signatures stay unchanged.
 
 // User-facing copy is Spanish; code and comments stay in English.
 export const OFFLINE_MESSAGE =
