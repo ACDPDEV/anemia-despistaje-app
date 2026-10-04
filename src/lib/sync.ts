@@ -156,10 +156,27 @@ export async function pullRemote(
   };
 }
 
+interface SupabaseSelectPage {
+  data: unknown;
+  error: { message: string } | null;
+}
+
+// Select result plus the optional PostgREST range window. supabase-js v2
+// (postgrest-js) `select()` returns a FilterBuilder that is thenable AND
+// carries `.range(from, to)`; plain-promise fakes without `range` keep
+// working through the single-select fallback below.
+interface SupabaseRangeableQuery extends Promise<SupabaseSelectPage> {
+  range?: (from: number, to: number) => Promise<SupabaseSelectPage>;
+}
+
 interface SupabaseTableHandle {
-  select: (columns?: string) => Promise<{ data: unknown; error: { message: string } | null }>;
+  select: (columns?: string) => SupabaseRangeableQuery;
   upsert: (rows: unknown) => Promise<{ error: { message: string } | null }>;
 }
+
+// PostgREST default page size: fetchAll walks range() windows until a
+// short page (< PAGE_SIZE) proves the table is exhausted.
+export const SYNC_PAGE_SIZE = 1000;
 
 // Production adapter: binds the SyncTable seam to a real Supabase client.
 // Never called without credentials (getSupabaseClient returns null first).
@@ -167,9 +184,22 @@ export function createSupabaseSyncTable(client: SupabaseClient): SyncTable {
   const handle = client.from("pacientes") as unknown as SupabaseTableHandle;
   return {
     fetchAll: async () => {
-      const { data, error } = await handle.select("*");
-      if (error) throw new Error(error.message);
-      return (data ?? []) as RemotePacienteRow[];
+      const all: RemotePacienteRow[] = [];
+      let from = 0;
+      for (;;) {
+        const query = handle.select("*");
+        if (typeof query.range !== "function") {
+          const { data, error } = await query;
+          if (error) throw new Error(error.message);
+          return (data ?? []) as RemotePacienteRow[];
+        }
+        const { data, error } = await query.range(from, from + SYNC_PAGE_SIZE - 1);
+        if (error) throw new Error(error.message);
+        const rows = (data ?? []) as RemotePacienteRow[];
+        all.push(...rows);
+        if (rows.length < SYNC_PAGE_SIZE) return all;
+        from += SYNC_PAGE_SIZE;
+      }
     },
     upsert: async (rows) => {
       const { error } = await handle.upsert(rows);

@@ -6,7 +6,7 @@ const BANDS: Diagnosis[] = ["Normal", "Anemia Leve", "Anemia Moderada", "Anemia 
 // Derived reporting view: counts per diagnosis + overall average,
 // all labels in Spanish. Reads store selectors, holds no local copy.
 export function StatisticsView() {
-  const pacientes = usePadronStore((s) => s.pacientes);
+  const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
   const countByDiagnosis = usePadronStore((s) => s.countByDiagnosis);
   const averageHb = usePadronStore((s) => s.averageHb);
 
