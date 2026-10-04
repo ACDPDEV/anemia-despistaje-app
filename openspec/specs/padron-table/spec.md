@@ -8,7 +8,7 @@ Filterable register of screened patients: searchable table with diagnosis badges
 
 ### Requirement: Filterable Table
 
-The system MUST render patients in a table with a single text filter matching name or document.
+The system MUST render patients in a table with a single text filter matching name or document, folding diacritics via the shared `normalizeNombre` helper so accented and unaccented queries match identically.
 
 #### Scenario: Filter narrows rows
 
@@ -21,6 +21,18 @@ The system MUST render patients in a table with a single text filter matching na
 - GIVEN a non-empty padrón
 - WHEN the filter matches no patient
 - THEN the table shows the no-results empty state ("Sin resultados")
+
+#### Scenario: Accent-insensitive filter match
+
+- GIVEN a registered patient "José"
+- WHEN the user types "Jose"
+- THEN the "José" row remains visible
+
+#### Scenario: Filter consistency with duplicates
+
+- GIVEN the shared `normalizeNombre` helper
+- WHEN filter matching and duplicate detection run
+- THEN both fold diacritics identically ("José" matches "Jose" in both)
 
 ### Requirement: Diagnosis Badges
 

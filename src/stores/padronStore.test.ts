@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { MAX_PADRON, usePadronStore } from "./padronStore";
+import {
+  MAX_PADRON,
+  bySeverity,
+  findPossibleDuplicates,
+  SEVERITY_RANK,
+  usePadronStore,
+} from "./padronStore";
 
 function addPatient(overrides: Record<string, unknown> = {}) {
   usePadronStore.getState().add({
@@ -65,5 +71,58 @@ describe("padronStore", () => {
     addPatient({ nivelHemoglobina: 12.0 });
     const raw = localStorage.getItem("padron-storage");
     expect(raw).toContain("Ana Torres");
+  });
+
+  it("ranks severity Severa before Moderada before Leve before Normal", () => {
+    expect(SEVERITY_RANK["Anemia Severa"]).toBeLessThan(
+      SEVERITY_RANK["Anemia Moderada"],
+    );
+    expect(SEVERITY_RANK["Anemia Moderada"]).toBeLessThan(
+      SEVERITY_RANK["Anemia Leve"],
+    );
+    expect(SEVERITY_RANK["Anemia Leve"]).toBeLessThan(SEVERITY_RANK["Normal"]);
+  });
+
+  it("sorts a copy by severity without mutating the input", () => {
+    addPatient({ nombre: "Normal Uno", nivelHemoglobina: 12.0 });
+    addPatient({ nombre: "Severa Uno", nivelHemoglobina: 6.5 });
+    addPatient({ nombre: "Leve Uno", nivelHemoglobina: 10.5 });
+    const input = usePadronStore.getState().pacientes;
+    const before = input.map((p) => p.nombre);
+    const sorted = bySeverity(input);
+    expect(sorted.map((p) => p.nombre)).toEqual([
+      "Severa Uno",
+      "Leve Uno",
+      "Normal Uno",
+    ]);
+    expect(sorted).not.toBe(input);
+    expect(input.map((p) => p.nombre)).toEqual(before);
+  });
+
+  it("keeps registration order within the same severity band", () => {
+    addPatient({ nombre: "Severa A", nivelHemoglobina: 6.5 });
+    addPatient({ nombre: "Normal Inter", nivelHemoglobina: 12.0 });
+    addPatient({ nombre: "Severa B", nivelHemoglobina: 6.0 });
+    const sorted = bySeverity(usePadronStore.getState().pacientes);
+    expect(sorted.map((p) => p.nombre)).toEqual([
+      "Severa A",
+      "Severa B",
+      "Normal Inter",
+    ]);
+  });
+
+  it("flags exact normalized matches including accents", () => {
+    addPatient({ nombre: "María López", nivelHemoglobina: 12.0 });
+    expect(findPossibleDuplicates(" maria  lopez ")).toHaveLength(1);
+    expect(findPossibleDuplicates("Jose")).toHaveLength(0);
+    addPatient({ nombre: "José", nivelHemoglobina: 12.0 });
+    const dups = findPossibleDuplicates("Jose");
+    expect(dups).toHaveLength(1);
+    expect(dups[0].nombre).toBe("José");
+  });
+
+  it("stays silent for different names", () => {
+    addPatient({ nombre: "Ana Ruiz", nivelHemoglobina: 12.0 });
+    expect(findPossibleDuplicates("Ana Torres")).toHaveLength(0);
   });
 });

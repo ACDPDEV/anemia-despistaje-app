@@ -32,8 +32,7 @@ describe("RegisterForm", () => {
     expect(screen.getByText("Normal")).toBeInTheDocument();
   });
 
-  it("rejects invalid data with Spanish messages and registers nothing", () => {
-    render(<RegisterForm />);
+  it("rejects invalid data with Spanish messages and registers nothing", () => {    render(<RegisterForm />);
 
     // Empty nombre
     fillAndSubmit("   ", "24", "12.0");
@@ -48,5 +47,27 @@ describe("RegisterForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/hemoglobina/i);
 
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
+  });
+
+  it("warns about a possible duplicate yet still registers", () => {
+    usePadronStore
+      .getState()
+      .add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
+    render(<RegisterForm />);
+    fillAndSubmit("maria lopez", "24", "12.0");
+    expect(screen.getByText(/posible duplicado/i)).toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes).toHaveLength(2);
+  });
+
+  it("dismisses the duplicate hint without losing the registration", () => {
+    usePadronStore
+      .getState()
+      .add({ nombre: "José", edadMeses: 24, nivelHemoglobina: 12.0 });
+    render(<RegisterForm />);
+    fillAndSubmit("Jose", "24", "12.0");
+    expect(screen.getByText(/posible duplicado/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /descartar/i }));
+    expect(screen.queryByText(/posible duplicado/i)).not.toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes).toHaveLength(2);
   });
 });

@@ -1,10 +1,40 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { evaluatePatient, type Diagnosis } from "../domain/anemia";
+import { normalizeNombre } from "../lib/normalize";
 
 // App invariant: the local padron never holds more than 100 records.
 // The 101st registration is rejected with a Spanish message.
 export const MAX_PADRON = 100;
+
+// Severity queue rank: lower runs first when "graves primero" is active.
+export const SEVERITY_RANK: Record<Diagnosis, number> = {
+  "Anemia Severa": 0,
+  "Anemia Moderada": 1,
+  "Anemia Leve": 2,
+  Normal: 3,
+};
+
+// Sorted copy by severity, stable by input index. Never mutates the input.
+export function bySeverity(list: Paciente[]): Paciente[] {
+  return [...list]
+    .map((p, index) => ({ p, index }))
+    .sort(
+      (a, b) =>
+        SEVERITY_RANK[a.p.diagnostico] - SEVERITY_RANK[b.p.diagnostico] ||
+        a.index - b.index,
+    )
+    .map(({ p }) => p);
+}
+
+// Warning-only duplicate signal: exact normalized-name matches in the store.
+export function findPossibleDuplicates(nombre: string): Paciente[] {
+  const target = normalizeNombre(nombre);
+  if (target.length === 0) return [];
+  return usePadronStore
+    .getState()
+    .pacientes.filter((p) => normalizeNombre(p.nombre) === target);
+}
 
 export interface Paciente {
   id: string;

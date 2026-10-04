@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { usePadronStore } from "../stores/padronStore";
+import { findPossibleDuplicates, usePadronStore } from "../stores/padronStore";
 import type { Diagnosis } from "../domain/anemia";
 
 // Registration form with Spanish labels and validation messages.
@@ -11,10 +11,12 @@ export function RegisterForm() {
   const [hb, setHb] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [lastDiagnosis, setLastDiagnosis] = useState<Diagnosis | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLastDiagnosis(null);
+    setDuplicateWarning(null);
 
     if (nombre.trim().length === 0) {
       setError("El nombre del paciente es obligatorio.");
@@ -29,6 +31,14 @@ export function RegisterForm() {
     if (!Number.isFinite(nivelHemoglobina) || nivelHemoglobina <= 0) {
       setError("El nivel de hemoglobina debe ser mayor que 0.");
       return;
+    }
+
+    // Warning-only duplicate signal: computed after validation, never blocks add.
+    const matches = findPossibleDuplicates(nombre);
+    if (matches.length > 0) {
+      setDuplicateWarning(
+        `Posible duplicado: ya existe un paciente llamado ${matches[0].nombre}.`,
+      );
     }
 
     try {
@@ -91,6 +101,18 @@ export function RegisterForm() {
         <p className="text-sm text-green-700">
           Paciente registrado: <strong>{lastDiagnosis}</strong>
         </p>
+      )}
+      {duplicateWarning && (
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-amber-700">{duplicateWarning}</p>
+          <button
+            type="button"
+            onClick={() => setDuplicateWarning(null)}
+            className="rounded border px-2 py-1 text-sm"
+          >
+            Descartar
+          </button>
+        </div>
       )}
       <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
         Registrar paciente

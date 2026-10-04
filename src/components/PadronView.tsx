@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { usePadronStore, type Paciente } from "../stores/padronStore";
+import {
+  bySeverity,
+  findPossibleDuplicates,
+  usePadronStore,
+  type Paciente,
+} from "../stores/padronStore";
+import { normalizeNombre } from "../lib/normalize";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -23,7 +29,9 @@ export function PadronView({
   onEmptyRegister?: () => void;
 }) {
   const pacientes = usePadronStore((s) => s.pacientes);
+  const countByDiagnosis = usePadronStore((s) => s.countByDiagnosis);
   const [filter, setFilter] = useState("");
+  const [gravesPrimero, setGravesPrimero] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   if (pacientes.length === 0) {
@@ -48,15 +56,23 @@ export function PadronView({
     );
   }
 
-  const normalized = filter.trim().toLowerCase();
-  const visible =
+  const normalized = normalizeNombre(filter);
+  const filtered =
     normalized.length === 0
       ? pacientes
-      : pacientes.filter((p) => p.nombre.toLowerCase().includes(normalized));
+      : pacientes.filter((p) => normalizeNombre(p.nombre).includes(normalized));
+  const visible = gravesPrimero ? bySeverity(filtered) : filtered;
+
+  const counts = countByDiagnosis();
+  const moderateSevere =
+    counts["Anemia Moderada"] + counts["Anemia Severa"];
 
   return (
     <section className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">Padrón de pacientes</h2>
+      <p role="status" className="text-sm text-muted-foreground">
+        Moderada + Severa: {moderateSevere}
+      </p>
       <div>
         <label
           htmlFor="padron-filter"
@@ -71,6 +87,17 @@ export function PadronView({
           placeholder="Buscar por nombre…"
           className="mt-1"
         />
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="graves-primero"
+          checked={gravesPrimero}
+          onChange={(e) => setGravesPrimero(e.target.checked)}
+        />
+        <label htmlFor="graves-primero" className="text-sm font-medium">
+          Ver graves primero
+        </label>
       </div>
       <Table>
         <TableHeader>
@@ -122,6 +149,8 @@ function PadronRow({
   onEdit: () => void;
 }) {
   const remove = usePadronStore((s) => s.remove);
+  const isPossibleDuplicate =
+    findPossibleDuplicates(paciente.nombre).length > 1;
 
   return (
     <TableRow>
@@ -129,9 +158,14 @@ function PadronRow({
       <TableCell>{paciente.edadMeses}</TableCell>
       <TableCell>{paciente.nivelHemoglobina}</TableCell>
       <TableCell>
-        <Badge variant={DIAGNOSIS_BADGE[paciente.diagnostico]}>
-          {paciente.diagnostico}
-        </Badge>
+        <div className="flex flex-wrap gap-1">
+          <Badge variant={DIAGNOSIS_BADGE[paciente.diagnostico]}>
+            {paciente.diagnostico}
+          </Badge>
+          {isPossibleDuplicate && (
+            <Badge variant="outline">Posible duplicado</Badge>
+          )}
+        </div>
       </TableCell>
       <TableCell>
         <div className="flex gap-2">
