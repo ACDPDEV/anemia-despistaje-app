@@ -17,3 +17,21 @@ export function evaluatePatient(nivelHemoglobina: number): Diagnosis {
 // copy can never drift from the evaluator.
 export const HB_CUTOFF_LABEL =
   "Normal ≥ 11 · Leve 10–10.9 · Moderada 7–9.9 · Severa < 7";
+
+// Spanish decimal entry parser for every Hb input (create + edit row).
+// Nurses type "11,5" with a comma, but <input type="number"> sanitizes the
+// comma to "" BEFORE React's onChange fires — verified by probe in this
+// repo's jsdom (onChange never fires for "11,5"/"11," on type=number, the
+// DOM value reads "", Number("") is 0, and submit then misdiagnoses a
+// correct Spanish entry as "debe ser mayor que 0"). Chrome follows the
+// same HTML value-sanitization rule, so neither live normalization nor
+// blur/submit normalization on a number input can ever see the comma: the
+// value is already gone. Hb inputs are therefore type="text" with
+// inputMode="decimal", and every entry funnels through here: trim, comma
+// becomes period, then Number. "11,5" → 11.5, "11.5" → 11.5, "" / "abc" →
+// NaN (callers diagnose those in Spanish as a format problem, never "> 0").
+export function parseHemoglobina(raw: string): number {
+  const normalized = raw.trim().replace(/,/g, ".");
+  if (normalized.length === 0) return NaN;
+  return Number(normalized);
+}

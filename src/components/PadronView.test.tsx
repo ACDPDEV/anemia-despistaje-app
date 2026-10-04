@@ -2312,10 +2312,15 @@ describe("PadronView duplicate badge action (run-25 P2-1)", () => {
     });
     expect(badges).toHaveLength(2);
     for (const badge of badges) {
-      // Badge look kept, action affordance added.
+      // Badge look kept, action affordance added: a filter icon names the
+      // action and the hover underline marks it tappable. Copy unchanged.
       expect(badge).toHaveTextContent("Posible duplicado");
       expect(badge.tagName).toBe("BUTTON");
       expect(badge).toHaveAttribute("type", "button");
+      expect(badge.className).toMatch(/hover:underline/);
+      const icon = badge.querySelector("svg");
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveAttribute("aria-hidden", "true");
     }
     expect(
       within(rowByName("Luis Paz")).queryByRole("button", {
@@ -2344,14 +2349,14 @@ describe("PadronView duplicate badge action (run-25 P2-1)", () => {
   });
 });
 
-describe("PadronView edit-row native bounds (run-25 P2-2)", () => {
+describe("PadronView edit-row Spanish-first validation (run-26 P1/P2-1)", () => {
   function openEditFor(name: string) {
     fireEvent.click(
       within(rowByName(name)).getByRole("button", { name: /editar/i }),
     );
   }
 
-  it("constrains Edad/Hb early with native bounds, keeping inputMode", () => {
+  it("keeps Edad numeric with advisory bounds; Hb is text for the comma, keeping inputMode", () => {
     seedTwo();
     render(<PadronView />);
     openEditFor("Ana Torres");
@@ -2361,33 +2366,55 @@ describe("PadronView edit-row native bounds (run-25 P2-2)", () => {
     expect(edad).toHaveAttribute("max", "59");
     expect(edad).toHaveAttribute("step", "1");
     expect(edad).toHaveAttribute("inputmode", "numeric");
+    // Hb mirrors RegisterForm (run-26 P1): type=text so "11,5" reaches
+    // parseHemoglobina intact; the hint names both separators.
     const hb = screen.getByLabelText(/hemoglobina/i);
-    expect(hb).toHaveAttribute("type", "number");
-    expect(hb).toHaveAttribute("min", "0.1");
-    expect(hb).toHaveAttribute("step", "0.1");
+    expect(hb).toHaveAttribute("type", "text");
+    expect(hb).not.toHaveAttribute("min");
     expect(hb).toHaveAttribute("inputmode", "decimal");
   });
 
-  it("blocks out-of-range edit values natively; the backstop owns the rest", () => {
+  it("answers out-of-range edit values with Spanish validation, never a native bubble", () => {
+    // run-26 P2-1: the row form is noValidate, so every value reaches the
+    // handler and the FIRST explanation is the Spanish inline error. The
+    // row stays open and nothing saves.
     seedTwo();
     render(<PadronView />);
     openEditFor("Ana Torres");
-    const edad = screen.getByLabelText(/edad/i) as HTMLInputElement;
-    fireEvent.change(edad, { target: { value: "5" } });
-    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
-    // Native layer first: the submit never reaches the handler, so the row
-    // stays open with no inline error and nothing saved.
-    expect(edad.validity.rangeUnderflow).toBe(true);
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
-    expect(usePadronStore.getState().pacientes[0].edadMeses).toBe(24);
-    // Backstop: an empty value passes native (no required) and the Spanish
-    // validation rejects it with the same clinical copy.
-    fireEvent.change(edad, { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "5" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
     const alerts = screen.getAllByRole("alert");
     expect(alerts.some((a) => /edad debe estar entre 6 y 59/i.test(a.textContent ?? ""))).toBe(true);
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
     expect(usePadronStore.getState().pacientes[0].edadMeses).toBe(24);
+    // Empty values meet the same Spanish validation with the same copy.
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    const emptyAlerts = screen.getAllByRole("alert");
+    expect(emptyAlerts.some((a) => /edad debe estar entre 6 y 59/i.test(a.textContent ?? ""))).toBe(true);
+    expect(usePadronStore.getState().pacientes[0].edadMeses).toBe(24);
+  });
+
+  it("saves a comma Hb edit as its period value, never '> 0' (run-26 P1)", () => {
+    seedTwo();
+    render(<PadronView />);
+    openEditFor("Ana Torres");
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: "10,5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    // Normalized and saved: 10.5 is Anemia Leve, and no format error
+    // misdiagnosed the comma entry.
+    expect(usePadronStore.getState().pacientes[0].nivelHemoglobina).toBe(10.5);
+    expect(usePadronStore.getState().pacientes[0].diagnostico).toBe(
+      "Anemia Leve",
+    );
+    expect(screen.queryByText(/mayor que 0/)).not.toBeInTheDocument();
+    expect(screen.getByText("Cambios guardados.")).toBeInTheDocument();
   });
 });
 

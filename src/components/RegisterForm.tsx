@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { getDuplicateWarning, MAX_NOMBRE, usePadronStore } from "../stores/padronStore";
 import { useRegisterDraftStore } from "../stores/registerDraftStore";
-import { HB_CUTOFF_LABEL, type Diagnosis } from "../domain/anemia";
+import { HB_CUTOFF_LABEL, parseHemoglobina, type Diagnosis } from "../domain/anemia";
 import { HelpSteps } from "./app-sidebar";
 import { PhoneSyncRow } from "./SyncStatusChip";
 import { Button } from "@/components/ui/button";
@@ -57,9 +57,10 @@ export function RegisterForm() {
       !Number.isInteger(edadMeses) || edadMeses < 6 || edadMeses > 59
         ? "La edad debe estar entre 6 y 59 meses."
         : null;
-    const nivelHemoglobina = Number(hb);
-    const nextHbError =
-      !Number.isFinite(nivelHemoglobina) || nivelHemoglobina <= 0
+    const nivelHemoglobina = parseHemoglobina(hb);
+    const nextHbError = !Number.isFinite(nivelHemoglobina)
+      ? "El nivel de hemoglobina debe ser un número como 11.5 o 11,5."
+      : nivelHemoglobina <= 0
         ? "El nivel de hemoglobina debe ser mayor que 0."
         : null;
     setNombreError(nextNombreError);
@@ -98,7 +99,12 @@ export function RegisterForm() {
   }
 
   return (
-    <form id="register-form" onSubmit={handleSubmit}>
+    // noValidate (Spanish-first harden): native bubbles speak the browser's
+    // locale, so interactive validation is off and the submit validation
+    // above owns EVERY message in Spanish. min/max/step/inputMode stay as
+    // progressive enhancement only (numeric keyboards, advisory semantics) —
+    // they never explain a failure first.
+    <form id="register-form" onSubmit={handleSubmit} noValidate>
       {/* Phone-only sync row (shared PhoneSyncRow, identical structure on
           Registro/Padrón/Panel): the sidebar footer hides inside the
           hamburger Sheet on phones, so sync sits above the capture fields.
@@ -126,15 +132,12 @@ export function RegisterForm() {
         </Field>
         <Field data-invalid={edadError ? true : undefined}>
           <FieldLabel htmlFor="edad">Edad (meses)</FieldLabel>
-          {/* Early native bounds (harden): desktop users meet 6–59 before
-              submit. Preemptive, not merely advisory — out-of-range values
-              never reach the handler (jsdom enforces this on submit-button
-              clicks exactly like real browsers, verified by test), so the
-              submit validation below is the backstop for what passes native
-              (empties, non-numerics). The draft store still receives strings
-              (e.target.value is always a string, even for type=number).
-              Hb floors the "> 0" rule at min 0.1 natively; validation
-              enforces the strict inequality. */}
+          {/* Edad keeps type=number (integer months, no decimal separator
+              for the comma bug to bite) with native min/max/step as
+              advisory bounds only: noValidate above means out-of-range
+              values reach the Spanish submit validation instead of a
+              browser-locale bubble. The draft store still receives strings
+              (e.target.value is always a string, even for type=number). */}
           <Input
             id="edad"
             type="number"
@@ -155,11 +158,15 @@ export function RegisterForm() {
         </Field>
         <Field data-invalid={hbError ? true : undefined}>
           <FieldLabel htmlFor="hb">Hemoglobina (g/dL)</FieldLabel>
+          {/* type=text + parseHemoglobina (run-26 P1): type=number
+              sanitizes the Spanish comma to "" before onChange fires, so the
+              comma never reaches our code on a number input — in jsdom AND
+              in Chrome (same HTML rule). The text input receives "11,5"
+              intact and the parser normalizes it to 11.5; inputMode keeps
+              the decimal keyboard on phones. */}
           <Input
             id="hb"
-            type="number"
-            min={0.1}
-            step={0.1}
+            type="text"
             inputMode="decimal"
             value={hb}
             onChange={(e) => {
@@ -171,8 +178,14 @@ export function RegisterForm() {
           />
           <FieldDescription id="hb-hint">
             <span className="block">Valor del hemoglobinómetro, ej. 11.5</span>
+            <span className="block">
+              Usa punto o coma — aceptamos ambas (11.5 o 11,5).
+            </span>
             <span className="block" data-testid="hb-cutoffs">
               {HB_CUTOFF_LABEL}
+            </span>
+            <span className="block" data-testid="hb-triage">
+              Moderada o Severa → seguimiento en el Panel
             </span>
           </FieldDescription>
           {/* Contextual help at the most-confusing moment (the Hb cutoffs):

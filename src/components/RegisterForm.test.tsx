@@ -54,49 +54,89 @@ describe("RegisterForm", () => {
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
 
-  it("blocks out-of-range Edad/Hb natively before submit validation runs", () => {
-    // run-25 P2-2: the native min/max bounds are advisory AND preemptive —
-    // jsdom enforces interactive validation on submit-button clicks exactly
-    // like real browsers (verified: the handler runs 0 times), so an
-    // out-of-range value never reaches the Spanish validation. Pin the
-    // blocked submit: nothing registers, no inline alert renders.
-    render(<RegisterForm />);
+  it("answers out-of-range Edad/Hb with Spanish validation, never a native bubble", () => {
+    // run-26 P2-1: the form is noValidate (native bubbles speak the
+    // browser's locale), so out-of-range values reach the submit handler
+    // and the FIRST explanation is the Spanish inline error. Native
+    // min/max/step stay as advisory progressive enhancement only.
+    const { container } = render(<RegisterForm />);
+    expect(container.querySelector("form")).toHaveAttribute("novalidate");
     fireEvent.change(screen.getByLabelText(/nombre/i), {
       target: { value: "Luis Paz" },
     });
-    const edad = screen.getByLabelText(/edad/i) as HTMLInputElement;
-    fireEvent.change(edad, { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "5" },
+    });
     fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
       target: { value: "12.0" },
     });
     fireEvent.click(screen.getByRole("button", { name: /registrar/i }));
-    expect(edad.validity.rangeUnderflow).toBe(true);
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "La edad debe estar entre 6 y 59 meses.",
+    );
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
 
-    // Same preemption on the Hb floor (min 0.1 carries the "> 0" rule).
-    fireEvent.change(edad, { target: { value: "24" } });
-    const hb = screen.getByLabelText(/hemoglobina/i) as HTMLInputElement;
-    fireEvent.change(hb, { target: { value: "0" } });
+    // Same Spanish-first ownership on the Hb floor: "0" parses to 0, which
+    // truly violates the strict inequality, so "> 0" is the RIGHT
+    // diagnosis here (contrast the comma case below, where it never is).
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "24" },
+    });
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: "0" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /registrar/i }));
-    expect(hb.validity.rangeUnderflow).toBe(true);
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/mayor que 0/);
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
 
-  it("constrains Edad/Hb early with native bounds, keeping inputMode", () => {
+  it("accepts the Spanish comma: 11,5 registers as 11.5, never '> 0'", () => {
+    // run-26 P1 regression test: run-25's type=number sanitized "11,5" to
+    // "" before onChange fired, and submit misdiagnosed the correct Spanish
+    // entry as "debe ser mayor que 0". Hb is type=text + parseHemoglobina,
+    // so the comma normalizes to 11.5 and registers.
     render(<RegisterForm />);
+    fillAndSubmit("Ana Torres", "24", "11,5");
+
+    const { pacientes } = usePadronStore.getState();
+    expect(pacientes).toHaveLength(1);
+    expect(pacientes[0].nivelHemoglobina).toBe(11.5);
+    expect(pacientes[0].diagnostico).toBe("Normal");
+    expect(screen.getByText(/paciente registrado/i)).toBeInTheDocument();
+    expect(screen.queryByText(/mayor que 0/)).not.toBeInTheDocument();
+  });
+
+  it("diagnoses non-numeric Hb as a format problem, never '> 0'", () => {
+    // run-26 P1: "abc" is not a number at all — the error must name the
+    // real problem (write a number like 11.5 or 11,5), not the inequality.
+    render(<RegisterForm />);
+    fillAndSubmit("Luis Paz", "24", "abc");
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "El nivel de hemoglobina debe ser un número como 11.5 o 11,5.",
+    );
+    expect(screen.queryByText(/mayor que 0/)).not.toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
+  });
+
+  it("keeps Edad numeric with advisory bounds; Hb is text for the comma, keeping inputMode", () => {
+    render(<RegisterForm />);
+    // Edad: integers only, so type=number is comma-safe; min/max/step stay
+    // advisory under noValidate (Spanish validation explains first).
     const edad = screen.getByLabelText(/edad/i);
     expect(edad).toHaveAttribute("type", "number");
     expect(edad).toHaveAttribute("min", "6");
     expect(edad).toHaveAttribute("max", "59");
     expect(edad).toHaveAttribute("step", "1");
     expect(edad).toHaveAttribute("inputmode", "numeric");
+    // Hb: type=text so "11,5" reaches parseHemoglobina intact (type=number
+    // would sanitize it to "" before onChange); inputMode keeps the decimal
+    // keyboard. The hint names both separators explicitly.
     const hb = screen.getByLabelText(/hemoglobina/i);
-    expect(hb).toHaveAttribute("type", "number");
-    expect(hb).toHaveAttribute("min", "0.1");
-    expect(hb).toHaveAttribute("step", "0.1");
+    expect(hb).toHaveAttribute("type", "text");
+    expect(hb).not.toHaveAttribute("min");
     expect(hb).toHaveAttribute("inputmode", "decimal");
+    expect(screen.getByText(/usa punto o coma/i)).toBeInTheDocument();
   });
 
   it("renders fields with no unnamed group role", () => {
@@ -113,6 +153,17 @@ describe("RegisterForm", () => {
     expect(
       screen.getByText("Valor del hemoglobinómetro, ej. 11.5"),
     ).toBeInTheDocument();
+  });
+
+  it("cues the capture-moment triage under the cutoff hint", () => {
+    // run-26 P3-2: bands alone don't say what to do — one quiet line sends
+    // Moderada/Severa to the Panel. Same hint styling, no new visual voice.
+    render(<RegisterForm />);
+    const triage = screen.getByTestId("hb-triage");
+    expect(triage).toHaveTextContent(
+      "Moderada o Severa → seguimiento en el Panel",
+    );
+    expect(triage.closest("[id='hb-hint']")).not.toBeNull();
   });
 
   it("flags only the offending field with a wired aria-describedby", () => {
@@ -364,7 +415,8 @@ describe("RegisterForm draft persistence (P2-1)", () => {
     expect(screen.getByLabelText(/nombre/i)).toHaveValue("Ana Tor");
     // type=number inputs report through jest-dom as numbers, never strings.
     expect(screen.getByLabelText(/edad/i)).toHaveValue(2);
-    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue(11);
+    // Hb is type=text for the comma (run-26 P1): the draft string survives.
+    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue("11");
   });
 
   it("clears the draft after a successful register so it never replays", () => {
@@ -392,7 +444,7 @@ describe("RegisterForm draft persistence (P2-1)", () => {
     render(<RegisterForm />);
     expect(screen.getByLabelText(/nombre/i)).toHaveValue("Ana Torres");
     expect(screen.getByLabelText(/edad/i)).toHaveValue(24);
-    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue(12);
+    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue("12.0");
   });
 });
 

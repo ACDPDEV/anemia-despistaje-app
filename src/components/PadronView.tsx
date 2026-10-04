@@ -27,7 +27,7 @@ import {
   TableRow,
 } from "./ui/table";
 import { DIAGNOSIS_BADGE } from "./DashboardView";
-import { HB_CUTOFF_LABEL } from "../domain/anemia";
+import { HB_CUTOFF_LABEL, parseHemoglobina } from "../domain/anemia";
 import {
   formatLastSyncAgo,
   formatSyncPending,
@@ -38,7 +38,7 @@ import {
 } from "../lib/syncGuard";
 import { useSlidingExpiry } from "../hooks/useSlidingExpiry";
 import { PhoneSyncRow } from "./SyncStatusChip";
-import { XIcon } from "lucide-react";
+import { Filter, XIcon } from "lucide-react";
 
 const COLUMN_COUNT = 6;
 // Dismiss grammar (single source of truth; RegisterForm mirrors it):
@@ -1086,10 +1086,14 @@ function PadronRow({
                   onClick={() => onFilterNombre(paciente.nombre)}
                   aria-label="Posible duplicado. Filtrar por este nombre para revisar duplicados."
                   title="Filtrar por este nombre para revisar duplicados"
-                  className="cursor-pointer"
+                  className="cursor-pointer underline-offset-4 hover:underline"
                 />
               }
             >
+              {/* Filter affordance (run-26 P2-2): the badge is a button but
+                  read as static — the icon names the filtering action and
+                  the hover underline marks it tappable. Copy unchanged. */}
+              <Filter aria-hidden="true" />
               Posible duplicado
             </Badge>
           )}
@@ -1317,13 +1321,11 @@ function PadronEditRow({
 
   // Per-field validation mirrors RegisterForm: same clinical copy, each
   // Input pointing at its own error id, invalid flag only on offenders.
-  // Edad/Hb hints mirror the create form (same copy, row-scoped ids).
-  // The native type/min/max/step bounds above are preemptive: out-of-range
-  // values never reach this handler (jsdom enforces native validation on
-  // submit-button clicks exactly like real browsers, verified by test).
-  // This submit validation is the backstop for what passes native
-  // (empties, non-numerics), and the store still receives strings
-  // (e.target.value is always a string, even for type=number).
+  // Edad/Hb hints mirror the create form (same copy, row-scoped ids). The
+  // row form is noValidate (Spanish-first, same decision as RegisterForm):
+  // native min/max/step stay advisory and the submit validation owns every
+  // message in Spanish. Hb is type=text + parseHemoglobina for the same
+  // comma reason (type=number empties "11,5" before onChange fires).
   const nombreErrorId = `nombre-${paciente.id}-error`;
   const edadHintId = `edad-${paciente.id}-hint`;
   const edadErrorId = `edad-${paciente.id}-error`;
@@ -1332,7 +1334,7 @@ function PadronEditRow({
 
   function handleSave() {
     const edadMeses = Number(edad);
-    const nivelHemoglobina = Number(hb);
+    const nivelHemoglobina = parseHemoglobina(hb);
     const nextNombreError =
       nombre.trim().length === 0
         ? "El nombre del paciente es obligatorio."
@@ -1343,8 +1345,9 @@ function PadronEditRow({
       !Number.isInteger(edadMeses) || edadMeses < 6 || edadMeses > 59
         ? "La edad debe estar entre 6 y 59 meses."
         : null;
-    const nextHbError =
-      !Number.isFinite(nivelHemoglobina) || nivelHemoglobina <= 0
+    const nextHbError = !Number.isFinite(nivelHemoglobina)
+      ? "El nivel de hemoglobina debe ser un número como 11.5 o 11,5."
+      : nivelHemoglobina <= 0
         ? "El nivel de hemoglobina debe ser mayor que 0."
         : null;
     setNombreError(nextNombreError);
@@ -1401,6 +1404,7 @@ function PadronEditRow({
           className="flex flex-col gap-2"
           onSubmit={handleSubmit}
           onKeyDown={handleRowKeyDown}
+          noValidate
         >
           <p className="text-sm font-medium">
             Editando a {paciente.nombre}
@@ -1456,9 +1460,7 @@ function PadronEditRow({
             </FieldLabel>
             <Input
               id={`hb-${paciente.id}`}
-              type="number"
-              min={0.1}
-              step={0.1}
+              type="text"
               inputMode="decimal"
               value={hb}
               disabled={confirmingDiscard}
@@ -1472,6 +1474,9 @@ function PadronEditRow({
             />
             <FieldDescription id={hbHintId}>
               <span className="block">Valor del hemoglobinómetro, ej. 11.5</span>
+              <span className="block">
+                Usa punto o coma — aceptamos ambas (11.5 o 11,5).
+              </span>
               <span className="block">{HB_CUTOFF_LABEL}</span>
             </FieldDescription>
             {hbError && <FieldError id={hbErrorId}>{hbError}</FieldError>}

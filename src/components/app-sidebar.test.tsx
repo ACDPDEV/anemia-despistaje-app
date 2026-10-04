@@ -183,9 +183,39 @@ describe("AppSidebar collapsed footer", () => {
       expect(popover).toHaveTextContent(step);
     }
     expect(popover).toHaveTextContent(/alt\+g/i);
+    // The heading owns the popover name (run-26 P3-1): labelledby, not a
+    // detached aria-label copy.
+    expect(popover).toHaveAttribute(
+      "aria-labelledby",
+      "sidebar-help-heading",
+    );
+    expect(screen.getByText("¿Cómo funciona?", { selector: "p" })).toHaveAttribute(
+      "id",
+      "sidebar-help-heading",
+    );
 
     // Esc closes the popover and returns focus to its button.
     fireEvent.keyDown(popover, { key: "Escape" });
+    expect(screen.queryByTestId("sidebar-help-popover")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(
+      screen.getByTestId("sidebar-help-collapsed"),
+    );
+  });
+
+  it("returns focus to the trigger when blur closes the popover", () => {
+    // run-26 P3-1 focus contract: EVERY close lands focus on the trigger,
+    // blur-out-of-wrapper included (gated on actually being open, so an
+    // idle tab-past never yanks focus back).
+    render(
+      <SidebarProvider defaultOpen={false}>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
+    );
+    fireEvent.click(screen.getByTestId("sidebar-help-collapsed"));
+    expect(screen.getByTestId("sidebar-help-popover")).toBeInTheDocument();
+
+    const wrapper = screen.getByTestId("sidebar-help-popover").parentElement!;
+    fireEvent.blur(wrapper, { relatedTarget: document.body });
     expect(screen.queryByTestId("sidebar-help-popover")).not.toBeInTheDocument();
     expect(document.activeElement).toBe(
       screen.getByTestId("sidebar-help-collapsed"),

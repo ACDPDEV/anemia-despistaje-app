@@ -97,8 +97,9 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
   const [signOutError, setSignOutError] = useState<string | null>(null);
   // Collapsed help disclosure: icon-width users get the same 4 steps in a
   // small non-modal popover (a title tooltip cannot carry 4 lines). Toggle
-  // + Esc + blur-out-of-wrapper close it; focus stays on the button so
-  // screen-reader users meet the freshly revealed steps right after it.
+  // + Esc + blur-out-of-wrapper close it; EVERY close lands focus on the
+  // trigger (run-26 focus contract) so keyboard users never lose their
+  // place, and the heading owns the popover name through aria-labelledby.
   const [helpOpen, setHelpOpen] = useState(false);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -172,8 +173,12 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
             className="relative flex justify-center py-1"
             onBlur={(e) => {
               // Same disarm-on-leave grammar as the padron confirms: focus
-              // leaving the wrapper closes the popover, draft-free.
+              // leaving the wrapper closes the popover, draft-free — and
+              // the close returns focus to the trigger, same as Esc. Gated
+              // on helpOpen so tabbing past the idle button never yanks
+              // focus back (only an actual close refocuses).
               if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                if (helpOpen) helpButtonRef.current?.focus();
                 setHelpOpen(false);
               }
             }}
@@ -190,7 +195,10 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
               title="¿Cómo funciona?"
               onClick={() => setHelpOpen((open) => !open)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") setHelpOpen(false);
+                if (e.key === "Escape") {
+                  setHelpOpen(false);
+                  helpButtonRef.current?.focus();
+                }
               }}
             >
               <CircleHelp aria-hidden="true" />
@@ -198,7 +206,7 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
             {helpOpen && (
               <div
                 role="dialog"
-                aria-label="¿Cómo funciona?"
+                aria-labelledby="sidebar-help-heading"
                 data-testid="sidebar-help-popover"
                 className="absolute bottom-full left-0 z-50 mb-2 w-64 rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground shadow-lg"
                 onKeyDown={(e) => {
@@ -209,7 +217,7 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
                   }
                 }}
               >
-                <p className="font-medium text-foreground">¿Cómo funciona?</p>
+                <p id="sidebar-help-heading" className="font-medium text-foreground">¿Cómo funciona?</p>
                 <HelpSteps />
               </div>
             )}
