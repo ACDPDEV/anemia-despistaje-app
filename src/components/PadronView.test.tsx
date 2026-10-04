@@ -196,12 +196,12 @@ describe("PadronView", () => {
   it("renders the severity-first toggle as a design-system checkbox with label association", () => {
     seedTwo();
     render(<PadronView />);
-    const toggle = screen.getByRole("checkbox", { name: /moderados y severos primero/i });
+    const toggle = screen.getByRole("checkbox", { name: /anemia moderada y severa primero/i });
     // Native input restyled with theme tokens, not a raw checkbox.
     expect(toggle).toHaveAttribute("data-slot", "checkbox");
     expect(toggle.tagName).toBe("INPUT");
     // Label association survives the swap.
-    expect(screen.getByLabelText(/moderados y severos primero/i)).toBe(toggle);
+    expect(screen.getByLabelText(/anemia moderada y severa primero/i)).toBe(toggle);
     // 44px touch hit area comes from the label row on coarse pointers.
     expect(toggle.closest("label")?.className).toMatch(/pointer-coarse:min-h-11/);
   });
@@ -238,14 +238,14 @@ describe("PadronView", () => {
   it("lists patients in registration order while severity-first is off", () => {
     seedTriage();
     render(<PadronView />);
-    expect(screen.getByRole("checkbox", { name: /moderados y severos primero/i })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /anemia moderada y severa primero/i })).not.toBeChecked();
     expect(visibleNames()).toEqual(["Nora Normal", "Severo Soto", "Leve Lara"]);
   });
 
   it("sorts Severa first when severity-first is on and restores order when off", () => {
     seedTriage();
     render(<PadronView />);
-    const toggle = screen.getByRole("checkbox", { name: /moderados y severos primero/i });
+    const toggle = screen.getByRole("checkbox", { name: /anemia moderada y severa primero/i });
     fireEvent.click(toggle);
     expect(visibleNames()).toEqual(["Severo Soto", "Leve Lara", "Nora Normal"]);
     fireEvent.click(toggle);
@@ -574,6 +574,81 @@ describe("PadronView", () => {
     fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
     expect(screen.getByRole("alert")).toHaveTextContent(/exceder 120/i);
     expect(usePadronStore.getState().pacientes[0].nombre).toBe("Ana Torres");
+  });
+
+  it("names the severity-first toggle with the exact badge taxonomy", () => {
+    seedTwo();
+    render(<PadronView />);
+    expect(
+      screen.getByRole("checkbox", { name: /ver anemia moderada y severa primero/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("focuses Confirmar when a single delete is armed so Enter completes it", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    const confirm = within(rowByName("Luis Paz")).getByRole("button", {
+      name: /confirmar/i,
+    });
+    expect(document.activeElement).toBe(confirm);
+  });
+
+  it("focuses Confirmar when a bulk delete is armed", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /eliminar seleccionados/i }),
+    );
+    const confirm = screen.getByRole("button", {
+      name: /confirmar eliminación/i,
+    });
+    expect(document.activeElement).toBe(confirm);
+  });
+
+  it("keeps two delete groups restorable, each with its own Deshacer", () => {
+    seedTwo();
+    render(<PadronView />);
+    for (const name of ["Ana Torres", "Luis Paz"]) {
+      const row = rowByName(name);
+      fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+      fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    }
+    // Both nets survive: two compact rows, newest first.
+    expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(2);
+    // Newest group (Luis Paz) restores first; Ana stays deleted.
+    const undoButtons = screen.getAllByRole("button", { name: /deshacer/i });
+    fireEvent.click(undoButtons[0]);
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(1);
+    // The older group still restores on demand.
+    fireEvent.click(screen.getByRole("button", { name: /deshacer/i }));
+    expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /deshacer/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("evicts the oldest undo at capacity 3 with an honest announcement", () => {
+    const { add } = usePadronStore.getState();
+    add({ nombre: "Uno", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Dos", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Tres", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Cuatro", edadMeses: 24, nivelHemoglobina: 12.0 });
+    render(<PadronView />);
+    for (const name of ["Uno", "Dos", "Tres", "Cuatro"]) {
+      const row = rowByName(name);
+      fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+      fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    }
+    // Max 3 compact rows; the oldest net expired with an announcement.
+    expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(3);
+    expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
   });
 });
 

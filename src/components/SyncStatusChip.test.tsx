@@ -28,17 +28,25 @@ vi.mock("../lib/syncGuard", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/syncGuard")>();
   return {
     ...actual,
-    // Spread copies the isSyncing primitive by value; re-expose it live so
-    // the chip's subscription reads the real flag.
+    // Spread copies the isSyncing/lastPullAt primitives by value; re-expose
+    // them live so the chip's subscription reads the real values.
     get isSyncing() {
       return actual.isSyncing;
     },
+    get lastPullAt() {
+      return actual.lastPullAt;
+    },
     runGuarded: vi.fn((fn: () => Promise<never>) => actual.runGuarded(fn)),
-    guardedPull: vi.fn(async () => ({
-      ok: true,
-      merged: usePadronStore.getState().pacientes,
-      message: "Sincronizado.",
-    })),
+    guardedPull: vi.fn(async () => {
+      // Mirror the real guardedPull: a successful pull opens the cooldown
+      // window and notifies subscribers so the receipt line updates live.
+      actual.recordPull();
+      return {
+        ok: true,
+        merged: usePadronStore.getState().pacientes,
+        message: "Sincronizado.",
+      };
+    }),
   };
 });
 
@@ -144,13 +152,13 @@ describe("SyncStatusChip", () => {
     const { rerender } = render(<SyncStatusChip />);
     expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
       "title",
-      "A salvo en este equipo",
+      "A salvo en este equipo · Sin sincronizar aún",
     );
     seedDirty();
     rerender(<SyncStatusChip />);
     expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
       "title",
-      "1 por sincronizar",
+      "1 por sincronizar · Sin sincronizar aún",
     );
   });
 
@@ -299,5 +307,32 @@ describe("SyncStatusChip", () => {
     const row = usePadronStore.getState().pacientes[0];
     expect(row.nombre).toBe("Ana Editada");
     expect(row.dirty).toBe(true);
+  });
+
+  it("shows an honest never-synced receipt instead of a timeless claim", () => {
+    render(<SyncStatusChip />);
+    expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+      "Sin sincronizar aún",
+    );
+  });
+
+  it("surfaces the last-sync timestamp live after a sync completes", async () => {
+    const id = seedDirty();
+    pushMock.mockResolvedValue({
+      ok: true,
+      pushedIds: [id],
+      message: "Se sincronizó 1 registro con Supabase.",
+    });
+    render(<SyncStatusChip />);
+    expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+      "Sin sincronizar aún",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+
+    await screen.findByText(/última sincronización hace \d+s/i);
+    expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+      /última sincronización hace \d+s/i,
+    );
   });
 });

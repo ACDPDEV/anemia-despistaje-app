@@ -29,6 +29,17 @@ const COLUMN_COUNT = 6;
 
 // Undo toast visibility window after a confirmed delete.
 const UNDO_TIMEOUT_MS = 8000;
+// Honest undo stack: single-slot silently dropped the earlier net, so keep
+// up to 3 pending groups with independent timers; the oldest is evicted
+// with an announcement when a fourth lands.
+const UNDO_STACK_MAX = 3;
+const EVICTION_MESSAGE = "Se expiró un deshacer anterior.";
+
+interface UndoGroup {
+  key: number;
+  ids: string[];
+  label: string;
+}
 
 // Filterable register: shadcn Table + single Input filter over nombre.
 // Row edit/delete reuse the existing store update/remove selectors.
@@ -51,15 +62,19 @@ export function PadronView({
   // that disappears (deleted, filtered out) simply drops out of scope.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkConfirming, setBulkConfirming] = useState(false);
-  const [undone, setUndone] = useState<{ id: string; nombre: string } | null>(
-    null,
-  );
-  const [undoneBulk, setUndoneBulk] = useState<{
-    ids: string[];
-    count: number;
-  } | null>(null);
-  const undoTimer = useRef<number | undefined>(undefined);
+  const [undoGroups, setUndoGroups] = useState<UndoGroup[]>([]);
+  // Honest undo stack (max 3): newest renders on top, each row restores
+  // its own ids through the existing per-row restore() loop.
+  const [evictionNotice, setEvictionNotice] = useState<string | null>(null);
+  const undoKey = useRef(0);
+  const undoTimers = useRef(new Map<number, number>());
+  const evictionTimer = useRef<number | undefined>(undefined);
   const bulkConfirmTimer = useRef<number | undefined>(undefined);
+  // Shortcut: arming the bulk delete moves focus to Confirmar so Enter
+  // completes it; Esc cancels (see bulk effect below).
+  const bulkConfirmRef = useRef<HTMLButtonElement>(null);
+  const groupsRef = useRef<UndoGroup[]>([]);
+  groupsRef.current = undoGroups;
 
   useEffect(() => {
     setSelected(new Set());
@@ -67,71 +82,92 @@ export function PadronView({
     window.clearTimeout(bulkConfirmTimer.current);
   }, [filter]);
 
-  // The 8s undo window is wall-clock: a newer delete replaces the pending
-  // one and restarts the timer; unmount clears it.
+  // The 8s undo window is wall-clock per group: each delete pushes its
+  // own group with an independent timer; unmount clears all of them.
   useEffect(() => {
     return () => {
-      window.clearTimeout(undoTimer.current);
+      for (const timer of undoTimers.current.values()) window.clearTimeout(timer);
+      undoTimers.current.clear();
       window.clearTimeout(bulkConfirmTimer.current);
+      window.clearTimeout(evictionTimer.current);
     };
   }, []);
 
-  function handleDeleted(id: string, nombre: string) {
-    window.clearTimeout(undoTimer.current);
-    setUndoneBulk(null);
-    setUndone({ id, nombre });
-    undoTimer.current = window.setTimeout(() => setUndone(null), UNDO_TIMEOUT_MS);
+  // Shortcut: focus Confirmar when the bulk delete arms so Enter confirms.
+  useEffect(() => {
+    if (bulkConfirming) bulkConfirmRef.current?.focus();
+  }, [bulkConfirming]);
+
+  function dismissGroup(key: number) {
+    const timer = undoTimers.current.get(key);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      undoTimers.current.delete(key);
+    }
+    setUndoGroups((prev) => prev.filter((g) => g.key !== key));
+  }
+
+  function pushUndoGroup(ids: string[], label: string) {
+    undoKey.current += 1;
+    const key = undoKey.current;
+    const timer = window.setTimeout(() => dismissGroup(key), UNDO_TIMEOUT_MS);
+    undoTimers.current.set(key, timer);
+    const prev = groupsRef.current;
+    if (prev.length >= UNDO_STACK_MAX) {
+      const oldest = prev[0];
+      const oldestTimer = undoTimers.current.get(oldest.key);
+      if (oldestTimer !== undefined) {
+        window.clearTimeout(oldestTimer);
+        undoTimers.current.delete(oldest.key);
+      }
+      setUndoGroups([...prev.slice(1), { key, ids, label }]);
+      setEvictionNotice(EVICTION_MESSAGE);
+      window.clearTimeout(evictionTimer.current);
+      evictionTimer.current = window.setTimeout(() => setEvictionNotice(null), 4000);
+    } else {
+      setUndoGroups([...prev, { key, ids, label }]);
+    }
+  }
+
+  function handleDeleted(id: string, _nombre: string) {
+    pushUndoGroup([id], "Paciente eliminado.");
   }
 
   function handleBulkDeleted(ids: string[]) {
-    window.clearTimeout(undoTimer.current);
-    setUndone(null);
-    setUndoneBulk({ ids, count: ids.length });
-    undoTimer.current = window.setTimeout(() => setUndoneBulk(null), UNDO_TIMEOUT_MS);
+    pushUndoGroup(
+      ids,
+      ids.length === 1 ? "Paciente eliminado." : `${ids.length} pacientes eliminados.`,
+    );
   }
 
-  function handleUndo() {
-    if (!undone) return;
-    restore(undone.id);
-    window.clearTimeout(undoTimer.current);
-    setUndone(null);
-  }
-
-  function handleBulkUndo() {
-    if (!undoneBulk) return;
+  function handleUndoGroup(key: number) {
+    const group = groupsRef.current.find((g) => g.key === key);
+    if (!group) return;
     // Same per-row restore path as the single delete, looped: tombstone
     // semantics per row unchanged (deletedAt cleared, dirty requeued).
-    for (const id of undoneBulk.ids) restore(id);
-    window.clearTimeout(undoTimer.current);
-    setUndoneBulk(null);
+    for (const id of group.ids) restore(id);
+    dismissGroup(key);
   }
 
   // Undo toasts render in BOTH branches below: wiping the last visible row
-  // lands on the empty state, and the 8s window must survive the crossing.
-  const singleUndoToast = undone && (
+  // lands on the empty state, and each 8s window must survive the crossing.
+  // Up to 3 compact rows (newest first), each with its own Deshacer.
+  const undoToast = undoGroups.length > 0 && (
     <div
       role="status"
-      className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"
+      className="fixed bottom-4 right-4 z-50 flex max-w-sm flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"
     >
-      <p className="text-sm">Paciente eliminado.</p>
-      <Button type="button" size="sm" onClick={handleUndo}>
-        Deshacer
-      </Button>
-    </div>
-  );
-  const bulkUndoToast = undoneBulk && (
-    <div
-      role="status"
-      className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-lg"
-    >
-      <p className="text-sm">
-        {undoneBulk.count === 1
-          ? "Paciente eliminado."
-          : `${undoneBulk.count} pacientes eliminados.`}
-      </p>
-      <Button type="button" size="sm" onClick={handleBulkUndo}>
-        Deshacer
-      </Button>
+      {[...undoGroups].reverse().map((group) => (
+        <div key={group.key} className="flex items-center gap-3">
+          <p className="text-sm">{group.label}</p>
+          <Button type="button" size="sm" onClick={() => handleUndoGroup(group.key)}>
+            Deshacer
+          </Button>
+        </div>
+      ))}
+      {evictionNotice && (
+        <p className="text-xs text-muted-foreground">{evictionNotice}</p>
+      )}
     </div>
   );
 
@@ -166,8 +202,7 @@ export function PadronView({
             Use la pestaña Registro para agregar el primer paciente.
           </p>
         )}
-        {singleUndoToast}
-        {bulkUndoToast}
+        {undoToast}
       </section>
     );
   }
@@ -341,7 +376,7 @@ export function PadronView({
             checked={gravesPrimero}
             onChange={(e) => setGravesPrimero(e.target.checked)}
           />
-          Ver moderados y severos primero
+          Ver Anemia Moderada y Severa primero
         </label>
       </div>
       {selectedVisible.length > 0 && (
@@ -363,6 +398,7 @@ export function PadronView({
                 variant="destructive"
                 size="sm"
                 className="pointer-coarse:min-h-11"
+                ref={bulkConfirmRef}
                 aria-label={`Confirmar eliminación de ${selectedVisible.length} pacientes seleccionados`}
                 onClick={handleBulkDeleteTap}
                 onKeyDown={(e) => {
@@ -470,8 +506,7 @@ export function PadronView({
           )}
         </TableBody>
       </Table>
-      {singleUndoToast}
-      {bulkUndoToast}
+      {undoToast}
     </section>
   );
 }
@@ -495,12 +530,19 @@ function PadronRow({
   // Two-tap delete guard: the first tap arms the confirm state in place
   // (same button keeps focus), the second tap confirms. Cancelar, Esc,
   // focus leaving the group, or a ~4s timeout disarms with no delete.
+  // Shortcut: arming moves focus to Confirmar so Enter completes the
+  // armed delete; Esc already cancels.
   const [confirming, setConfirming] = useState(false);
   const confirmTimer = useRef<number | undefined>(undefined);
+  const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     return () => window.clearTimeout(confirmTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (confirming) confirmRef.current?.focus();
+  }, [confirming]);
 
   function disarm() {
     window.clearTimeout(confirmTimer.current);
@@ -564,6 +606,7 @@ function PadronRow({
                 variant="destructive"
                 size="sm"
                 className="pointer-coarse:min-h-11"
+                ref={confirmRef}
                 aria-label={`Confirmar eliminación de ${paciente.nombre}`}
                 onClick={handleDeleteTap}
                 onKeyDown={(e) => {

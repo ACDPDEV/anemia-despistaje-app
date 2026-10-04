@@ -46,12 +46,24 @@ export let isSyncing = false;
 // really hit the remote. Null until the first successful pull.
 export let lastPullAt: number | null = null;
 
-type Listener = () => void;
+// Reactive payload: sync flag plus last-pull timestamp so the receipt line
+// can update live after a sync completes.
+export interface SyncState {
+  isSyncing: boolean;
+  lastPullAt: number | null;
+}
+
+type Listener = (state: SyncState) => void;
 const listeners = new Set<Listener>();
+
+function notify(): void {
+  const state: SyncState = { isSyncing, lastPullAt };
+  for (const listener of listeners) listener(state);
+}
 
 function setSyncing(value: boolean): void {
   isSyncing = value;
-  for (const listener of listeners) listener();
+  notify();
 }
 
 // Minimal reactive seam for the future Unit-3 buttons (zustand-free).
@@ -87,9 +99,11 @@ export function shouldSkipPull(now: number = Date.now(), cooldownMs: number = DE
   return now - lastPullAt < cooldownMs;
 }
 
-// Opens/refreshes the pull cooldown window at `now`.
+// Opens/refreshes the pull cooldown window at `now`. Notifies subscribers
+// so the timestamp receipt re-reads lastPullAt live after a sync completes.
 export function recordPull(now: number = Date.now()): void {
   lastPullAt = now;
+  notify();
 }
 
 export interface GuardedPullOptions {

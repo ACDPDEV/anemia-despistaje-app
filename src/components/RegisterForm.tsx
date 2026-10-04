@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { findPossibleDuplicates, MAX_NOMBRE, usePadronStore } from "../stores/padronStore";
 import { HB_CUTOFF_LABEL, type Diagnosis } from "../domain/anemia";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,10 @@ export function RegisterForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [lastDiagnosis, setLastDiagnosis] = useState<Diagnosis | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  // Capture-loop shortcut: after a successful register, focus returns to
+  // Nombre so the next patient needs no extra click. Deferred with
+  // setTimeout 0 so the success announcer settles first.
+  const nombreRef = useRef<HTMLInputElement>(null);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -73,6 +77,7 @@ export function RegisterForm() {
     setNombre("");
     setEdad("");
     setHb("");
+    window.setTimeout(() => nombreRef.current?.focus(), 0);
   }
 
   return (
@@ -82,6 +87,7 @@ export function RegisterForm() {
           <FieldLabel htmlFor="nombre">Nombre del paciente</FieldLabel>
           <Input
             id="nombre"
+            ref={nombreRef}
             value={nombre}
             maxLength={MAX_NOMBRE}
             onChange={(e) => {

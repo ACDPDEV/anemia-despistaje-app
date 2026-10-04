@@ -48,6 +48,26 @@ export default function App() {
     };
   }, [authConfigured]);
 
+  // Keyboard shortcut: Alt+1/Alt+2/Alt+3 switch tabs
+  // (Registro/Padrón/Panel). preventDefault avoids browser menu conflicts.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.key === "1") {
+        event.preventDefault();
+        setTab("register");
+      } else if (event.key === "2") {
+        event.preventDefault();
+        setTab("padron");
+      } else if (event.key === "3") {
+        event.preventDefault();
+        setTab("dashboard");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (authConfigured && session === undefined) {
     return (
       <main className="mx-auto w-full max-w-5xl p-6">
@@ -74,6 +94,10 @@ export default function App() {
           <h1 className="text-2xl font-semibold">Despistaje de Anemia</h1>
         </header>
         <div className="mx-auto w-full max-w-5xl p-6">
+          {/* Discoverability hint for the Alt+1/2/3 tab shortcuts (one place). */}
+          <p className="sr-only">
+            Atajos de teclado: Alt+1 Registro, Alt+2 Padrón, Alt+3 Panel.
+          </p>
           {tab === "register" && <RegisterForm />}
           {tab === "padron" && (
             <PadronView onEmptyRegister={() => setTab("register")} />

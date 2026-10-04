@@ -196,4 +196,12 @@ describe("RegisterForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/exceder 120/i);
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
   });
+
+  it("returns focus to Nombre after a successful register for the capture loop", async () => {
+    render(<RegisterForm />);
+    fillAndSubmit("Ana Torres", "24", "12.0");
+    expect(screen.getByText(/paciente registrado/i)).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(screen.getByLabelText(/nombre/i));
+  });
 });

@@ -203,4 +203,24 @@ describe("App sidebar shell", () => {
       "1 por sincronizar",
     );
   });
+
+  it("switches tabs with Alt+1/Alt+2/Alt+3 without browser menu conflicts", () => {
+    render(<App />);
+    expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "2", altKey: true });
+    expect(screen.getByRole("button", { name: /registrar paciente/i }))
+      .toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "3", altKey: true });
+    expect(screen.getByTestId("kpi-total")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "1", altKey: true });
+    expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
+  });
+
+  it("names the keyboard tab shortcuts once for discoverability", () => {
+    render(<App />);
+    expect(screen.getByText(/alt\+1 registro/i)).toBeInTheDocument();
+  });
 });

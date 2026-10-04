@@ -4,8 +4,10 @@ import { useOnline } from "../hooks/useOnline";
 import { createSupabaseSyncTable, filterUnchangedIds, pushDirty } from "../lib/sync";
 import { getSupabaseClient } from "../lib/supabase";
 import {
+  formatLastSyncAgo,
   guardedPull,
   isSyncing,
+  lastPullAt,
   runGuarded,
   subscribeSyncState,
   SYNC_BUSY_MESSAGE,
@@ -23,6 +25,9 @@ export function SyncStatusChip() {
   const pacientes = usePadronStore((s) => s.pacientes);
   const online = useOnline();
   const [syncing, setSyncing] = useState(isSyncing);
+  // Last-sync receipt: mirrors lastPullAt live so the second line updates
+  // right after a sync completes. Null until the first successful pull.
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(lastPullAt);
   // Last sync failure, kept visible until the next attempt starts.
   const [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
@@ -30,7 +35,10 @@ export function SyncStatusChip() {
   useEffect(() => {
     alive.current = true;
     const unsubscribe = subscribeSyncState(() => {
-      if (alive.current) setSyncing(isSyncing);
+      if (alive.current) {
+        setSyncing(isSyncing);
+        setLastSyncAt(lastPullAt);
+      }
     });
     return () => {
       alive.current = false;
@@ -129,9 +137,16 @@ export function SyncStatusChip() {
   // sync runs, and to retry after a failure.
   const showAction = online && (pending > 0 || error !== null || syncing);
   const buttonLabel = syncing ? SYNCING_LABEL : error !== null ? "Reintentar" : "Sincronizar";
+  // Honest receipt line: seconds formatter is the only machinery syncGuard
+  // owns, so compose with it directly (no invented min/h escalation).
+  // Never-synced shows no lie — a quiet "Sin sincronizar aún".
+  const receipt =
+    lastSyncAt === null
+      ? "Sin sincronizar aún"
+      : formatLastSyncAgo(Math.max(0, Math.floor((Date.now() - lastSyncAt) / 1000)));
   // Mirrors the full status so the collapsed (icon-only) sidebar clipping
   // stays discoverable through the native tooltip.
-  const title = error ? `${text} · ${error}` : text;
+  const title = error ? `${text} · ${error}` : `${text} · ${receipt}`;
 
   return (
     <div data-testid="sync-status-chip" title={title} className="flex flex-col gap-1 px-2">
@@ -155,6 +170,12 @@ export function SyncStatusChip() {
           </Button>
         )}
       </div>
+      <p
+        data-testid="sync-receipt"
+        className="truncate text-[11px] text-muted-foreground"
+      >
+        {receipt}
+      </p>
       {error && (
         <p role="alert" className="text-xs text-destructive">
           {error}
