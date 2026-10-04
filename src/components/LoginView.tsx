@@ -57,6 +57,12 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // Repeat-failure re-announce (harden): React bails out when the same
+  // string is set twice, so an identical second failure would reuse the
+  // live node and the [formError] focus effect would never refire. The
+  // attempt counter keys a fresh alert node per failure and joins the
+  // focus effect deps, so every attempt announces once + moves focus.
+  const [formErrorAttempt, setFormErrorAttempt] = useState(0);
   const [pending, setPending] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
   // Forgotten-password sub-view (sign-in only): replaces the form, then a
@@ -85,7 +91,7 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   }, [mode, showReset, confirmationSent, resetSent]);
   useEffect(() => {
     if (formError) formAlertRef.current?.focus();
-  }, [formError]);
+  }, [formError, formErrorAttempt]);
   useEffect(() => {
     if (confirmationSent) confirmationRef.current?.focus();
   }, [confirmationSent]);
@@ -131,6 +137,7 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
             ? "No se pudo crear la cuenta."
             : "No se pudo iniciar sesión.",
       );
+      setFormErrorAttempt((c) => c + 1);
     } finally {
       setPending(false);
     }
@@ -153,6 +160,7 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
           ? toSpanishErrorMessage(err.message)
           : RESET_SEND_FAILED_MESSAGE,
       );
+      setFormErrorAttempt((c) => c + 1);
     } finally {
       setResetPending(false);
     }
@@ -201,7 +209,7 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   const showAlreadyRegisteredRecovery =
     isSignup && formError === ALREADY_REGISTERED_MESSAGE;
   const formAlert = formError ? (
-    <div className="flex flex-col gap-1">
+    <div key={formErrorAttempt} className="flex flex-col gap-1">
       <p ref={formAlertRef} tabIndex={-1} role="alert" className="text-sm text-destructive">
         {formError}
       </p>

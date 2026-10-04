@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CircleHelp, ClipboardList, LayoutDashboard, LogOut, Users, type LucideIcon } from "lucide-react";
 import { useSidebar } from "./ui/sidebar";
 import { isAuthConfigured, signOut } from "../lib/auth";
@@ -90,6 +90,12 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
   // App.tsx clears the session through onAuthStateChange.
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  // Repeat-failure re-announce (harden, same pattern as LoginView): an
+  // identical second sign-out failure must mount a fresh role=alert node
+  // and refire the focus effect instead of bailing out on Object.is
+  // equality of the message string.
+  const [signOutErrorAttempt, setSignOutErrorAttempt] = useState(0);
+  const signOutAlertRef = useRef<HTMLParagraphElement | null>(null);
   // Collapsed help disclosure: icon-width users get the same 4 steps in a
   // small non-modal popover (a title tooltip cannot carry 4 lines). Toggle
   // + Esc + blur-out-of-wrapper close it; ONLY Esc returns focus to the
@@ -116,10 +122,15 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
           ? toSpanishErrorMessage(err.message)
           : "No se pudo cerrar la sesión. Inténtalo de nuevo.",
       );
+      setSignOutErrorAttempt((c) => c + 1);
     } finally {
       setSigningOut(false);
     }
   }
+
+  useEffect(() => {
+    if (signOutError) signOutAlertRef.current?.focus();
+  }, [signOutError, signOutErrorAttempt]);
 
   return (
     <Sidebar collapsible="icon">
@@ -245,8 +256,8 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
           </SidebarMenu>
         )}
         {signOutError && (
-          <div className="flex flex-col gap-1 px-2">
-            <p role="alert" data-testid="signout-error" className="text-xs text-destructive">
+          <div key={signOutErrorAttempt} className="flex flex-col gap-1 px-2">
+            <p ref={signOutAlertRef} tabIndex={-1} role="alert" data-testid="signout-error" className="text-xs text-destructive">
               {signOutError}
             </p>
             <Button

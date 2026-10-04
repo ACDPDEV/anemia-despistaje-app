@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AppSidebar } from "./app-sidebar";
 import { SidebarProvider } from "./ui/sidebar";
 import { Sheet, SheetContent } from "./ui/sheet";
@@ -270,6 +270,33 @@ describe("AppSidebar collapsed footer", () => {
         'button[data-sync-action="true"]:not([disabled])',
       ),
     ).not.toBeNull();
+  });
+});
+
+describe("AppSidebar sign-out repeat failures re-announce (harden P2)", () => {
+  it("re-announces and refocuses when the same sign-out failure repeats", async () => {
+    mockedAuth.signOut.mockRejectedValue(new Error("boom"));
+    render(
+      <SidebarProvider>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^cerrar sesión$/i }));
+    const first = await screen.findByTestId("signout-error");
+    expect(first).toHaveAttribute("role", "alert");
+    await screen.findByRole("button", { name: /reintentar/i });
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    fireEvent.click(screen.getByRole("button", { name: /reintentar/i }));
+    await waitFor(() =>
+      expect(mockedAuth.signOut).toHaveBeenCalledTimes(2),
+    );
+    const second = await screen.findByTestId("signout-error");
+    // Fresh live node per attempt so AT re-announces the identical string.
+    expect(second).not.toBe(first);
+    expect(second).toHaveTextContent(first.textContent ?? "");
+    await waitFor(() => expect(document.activeElement).toBe(second));
   });
 });
 

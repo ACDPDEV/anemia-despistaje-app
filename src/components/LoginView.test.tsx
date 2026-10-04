@@ -640,6 +640,69 @@ describe("LoginView password length pre-check (run-31 P2-b)", () => {
   });
 });
 
+describe("LoginView repeat failures re-announce (harden P2)", () => {
+  it("re-announces and refocuses when the same sign-in failure repeats", async () => {
+    const spy = vi
+      .spyOn(auth, "signInWithPassword")
+      .mockRejectedValue(new Error("Invalid login credentials"));
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "clave-mala" },
+    });
+    const submit = screen.getByRole("button", { name: /iniciar sesión/i });
+
+    fireEvent.click(submit);
+    const first = await screen.findByRole("alert");
+    expect(first).toHaveTextContent(
+      "Correo o contraseña incorrectos. Revísalos e inténtalo de nuevo.",
+    );
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    const second = await screen.findByRole("alert");
+    expect(second).toHaveTextContent(
+      "Correo o contraseña incorrectos. Revísalos e inténtalo de nuevo.",
+    );
+    // Fresh live node per attempt so AT re-announces the identical string.
+    expect(second).not.toBe(first);
+    await waitFor(() => expect(document.activeElement).toBe(second));
+  });
+
+  it("re-announces and refocuses when the same reset failure repeats", async () => {
+    const spy = vi
+      .spyOn(auth, "requestPasswordReset")
+      .mockRejectedValue(new Error("boom"));
+    render(<LoginView />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿olvidaste tu contraseña\?/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    const send = screen.getByRole("button", {
+      name: /enviar enlace de recuperación/i,
+    });
+
+    fireEvent.click(send);
+    const first = await screen.findByRole("alert");
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    fireEvent.click(send);
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    const second = await screen.findByRole("alert");
+    // Fresh live node per attempt so AT re-announces the identical string.
+    expect(second).not.toBe(first);
+    expect(second).toHaveTextContent(first.textContent ?? "");
+    await waitFor(() => expect(document.activeElement).toBe(second));
+  });
+});
+
 describe("LoginView mode-switch hygiene (run-31 minor)", () => {
   it("clears the password but keeps the email when switching modes", () => {
     render(<LoginView />);
