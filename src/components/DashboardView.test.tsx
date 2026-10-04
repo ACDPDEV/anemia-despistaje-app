@@ -312,9 +312,13 @@ describe("DashboardView", () => {
     expect(screen.getByTestId("kpi-avg")).toHaveTextContent("—");
     expect(screen.getByTestId("kpi-anemia-pct")).toHaveTextContent("—");
     expect(screen.getAllByText(/sin registros/i).length).toBeGreaterThanOrEqual(1);
-    // Total + 4 diagnosis counts are zero without errors
+    // Total + 4 diagnosis counts are zero without errors (bands live
+    // inside the charts disclosure now, still in the DOM).
     expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(5);
     const bandCounts = screen.getByTestId("band-counts");
+    expect(screen.getByTestId("charts-disclosure")).toContainElement(
+      bandCounts,
+    );
     for (const band of HB_BANDS) {
       expect(within(bandCounts).getByText(band)).toBeInTheDocument();
     }
@@ -339,6 +343,33 @@ describe("DashboardView", () => {
     seedPadron();
     render(<DashboardView />);
     expect(screen.queryByTestId("empty-guide")).not.toBeInTheDocument();
+  });
+
+  it("folds band counts into the charts disclosure: first screen holds 4 numbers", () => {
+    seedPadron();
+    render(<DashboardView />);
+    const disclosure = screen.getByTestId("charts-disclosure");
+    const bandCounts = screen.getByTestId("band-counts");
+    // Distribution data lives with the charts, not on the first screen.
+    expect(disclosure).toContainElement(bandCounts);
+    for (const band of HB_BANDS) {
+      expect(within(bandCounts).getByText(band)).toBeInTheDocument();
+    }
+    // First screen numbers: hero + 3 KPIs only (4 numbers, not 8).
+    for (const id of ["kpi-modsev", "kpi-total", "kpi-avg", "kpi-anemia-pct"]) {
+      expect(disclosure).not.toContainElement(screen.getByTestId(id));
+    }
+  });
+
+  it("renders quiet chart chrome: no grid, no tooltip (LabelList carries values)", () => {
+    seedPadron();
+    const { container } = render(<DashboardView />);
+    expect(
+      container.querySelector(".recharts-cartesian-grid"),
+    ).toBeNull();
+    expect(
+      container.querySelector(".recharts-tooltip-wrapper"),
+    ).toBeNull();
   });
 });
 

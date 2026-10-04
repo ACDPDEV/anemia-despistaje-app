@@ -66,7 +66,9 @@ export function SyncStatusChip() {
     ? `Sin conexión · ${pending} pendientes`
     : pending > 0
       ? `${pending} por sincronizar`
-      : "A salvo en este equipo";
+      : lastSyncAt === null
+        ? "Guardado en este equipo · sin sincronizar"
+        : "A salvo en este equipo";
 
   function fail(message: string): void {
     if (alive.current) setError(message);

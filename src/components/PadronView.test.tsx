@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
 import { recordPull, resetSyncGuardForTests } from "../lib/syncGuard";
 import { PadronView } from "./PadronView";
@@ -687,6 +687,179 @@ describe("PadronView", () => {
     // Max 3 compact rows; the oldest net expired with an announcement.
     expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(3);
     expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
+  });
+
+  it("ties the eviction notice to the oldest surviving group, not a 4s timer", () => {
+    vi.useFakeTimers();
+    try {
+      const { add } = usePadronStore.getState();
+      add({ nombre: "Uno", edadMeses: 24, nivelHemoglobina: 12.0 });
+      add({ nombre: "Dos", edadMeses: 24, nivelHemoglobina: 12.0 });
+      add({ nombre: "Tres", edadMeses: 24, nivelHemoglobina: 12.0 });
+      add({ nombre: "Cuatro", edadMeses: 24, nivelHemoglobina: 12.0 });
+      render(<PadronView />);
+      for (const name of ["Uno", "Dos", "Tres", "Cuatro"]) {
+        const row = rowByName(name);
+        fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+        fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+      }
+      // Past the old 4s timer the notice still stands: groups live 8s.
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(3);
+      // Undoing the tied group (oldest surviving = Dos, rendered last)
+      // dismisses the notice with it.
+      const undoButtons = screen.getAllByRole("button", { name: /deshacer/i });
+      fireEvent.click(undoButtons[undoButtons.length - 1]);
+      expect(screen.getByText("Dos")).toBeInTheDocument();
+      expect(screen.queryByText(/se expiró un deshacer anterior/i)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears a stale eviction notice on the next non-evicting delete", () => {
+    const { add } = usePadronStore.getState();
+    add({ nombre: "Uno", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Dos", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Tres", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Cuatro", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Cinco", edadMeses: 24, nivelHemoglobina: 12.0 });
+    render(<PadronView />);
+    for (const name of ["Uno", "Dos", "Tres", "Cuatro"]) {
+      const row = rowByName(name);
+      fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+      fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    }
+    expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
+    // Free a slot without touching the tied group (undo newest Cuatro):
+    // notice survives because Dos is still pending.
+    const newest = screen.getAllByRole("button", { name: /deshacer/i })[0];
+    fireEvent.click(newest);
+    expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
+    // Next delete fits without evicting: the stale notice clears.
+    const row = rowByName("Cinco");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
+    expect(screen.queryByText(/se expiró un deshacer anterior/i)).not.toBeInTheDocument();
+  });
+
+  it("slides the row-delete fuse on interaction instead of expiring", () => {
+    vi.useFakeTimers();
+    try {
+      seedTwo();
+      render(<PadronView />);
+      const row = rowByName("Luis Paz");
+      fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+      expect(
+        within(rowByName("Luis Paz")).getByRole("button", { name: /confirmar/i }),
+      ).toBeInTheDocument();
+      // 3s pass, then any keydown inside the group restarts the 4s fuse.
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      fireEvent.keyDown(
+        within(rowByName("Luis Paz")).getByRole("button", { name: /confirmar/i }),
+        { key: "a" },
+      );
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      // 6s total, but the fuse slid: still armed.
+      expect(
+        within(rowByName("Luis Paz")).getByRole("button", { name: /confirmar/i }),
+      ).toBeInTheDocument();
+      // Without further interaction the fuse expires and disarms.
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(
+        within(rowByName("Luis Paz")).getByRole("button", { name: /^eliminar$/i }),
+      ).toBeInTheDocument();
+      expect(usePadronStore.getState().pacientes).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("slides the bulk-delete fuse on pointer activity", () => {
+    vi.useFakeTimers();
+    try {
+      seedTwo();
+      render(<PadronView />);
+      fireEvent.click(
+        screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /eliminar seleccionados/i }),
+      );
+      expect(
+        screen.getByRole("button", { name: /confirmar eliminación/i }),
+      ).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      fireEvent.pointerOver(
+        screen.getByRole("button", { name: /confirmar eliminación/i }),
+      );
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(
+        screen.getByRole("button", { name: /confirmar eliminación/i }),
+      ).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(
+        screen.queryByRole("button", { name: /confirmar eliminación/i }),
+      ).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("slides the dirty-discard fuse on interaction", () => {
+    vi.useFakeTimers();
+    try {
+      seedTwo();
+      render(<PadronView />);
+      fireEvent.click(
+        within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+      );
+      fireEvent.change(screen.getByLabelText(/^nombre/i), {
+        target: { value: "Cambiado" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^cancelar$/i }));
+      expect(
+        screen.getByRole("button", { name: /descartar cambios/i }),
+      ).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      fireEvent.keyDown(
+        screen.getByRole("button", { name: /descartar cambios/i }),
+        { key: "a" },
+      );
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(
+        screen.getByRole("button", { name: /descartar cambios/i }),
+      ).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(
+        screen.queryByRole("button", { name: /descartar cambios/i }),
+      ).not.toBeInTheDocument();
+      // Draft survived the whole slide: nothing discarded, still editing.
+      expect(screen.getByLabelText(/^nombre/i)).toHaveValue("Cambiado");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -91,13 +91,19 @@ afterEach(() => {
 });
 
 describe("SyncStatusChip", () => {
-  it("reports safety on this device when online with nothing pending", () => {
+  it("reports honest never-synced state on this device when clean", () => {
     render(<SyncStatusChip />);
-    expect(statusText()).toBe("A salvo en este equipo");
+    expect(statusText()).toBe("Guardado en este equipo · sin sincronizar");
     // Clean state stays quiet: text only, no action.
     expect(
       screen.queryByRole("button", { name: /sincronizar/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("claims safety only after a real pull", () => {
+    guard.recordPull(Date.now() - 5_000);
+    render(<SyncStatusChip />);
+    expect(statusText()).toBe("A salvo en este equipo");
   });
 
   it("counts dirty rows as pending when online", () => {
@@ -128,7 +134,7 @@ describe("SyncStatusChip", () => {
 
   it("reacts to offline/online events without a reload", () => {
     render(<SyncStatusChip />);
-    expect(statusText()).toBe("A salvo en este equipo");
+    expect(statusText()).toBe("Guardado en este equipo · sin sincronizar");
     act(() => {
       setOnline(false);
       fireEvent(window, new Event("offline"));
@@ -138,7 +144,7 @@ describe("SyncStatusChip", () => {
       setOnline(true);
       fireEvent(window, new Event("online"));
     });
-    expect(statusText()).toBe("A salvo en este equipo");
+    expect(statusText()).toBe("Guardado en este equipo · sin sincronizar");
   });
 
   it("announces as a polite live region", () => {
@@ -152,7 +158,7 @@ describe("SyncStatusChip", () => {
     const { rerender } = render(<SyncStatusChip />);
     expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
       "title",
-      "A salvo en este equipo · Sin sincronizar aún",
+      "Guardado en este equipo · sin sincronizar · Sin sincronizar aún",
     );
     seedDirty();
     rerender(<SyncStatusChip />);
@@ -272,10 +278,13 @@ describe("SyncStatusChip", () => {
       pushedIds: [id],
       message: "Se sincronizó 1 registro con Supabase.",
     });
-    guardedPullMock.mockResolvedValueOnce({
-      ok: true,
-      merged: [],
-      message: "Sin cambios remotos.",
+    guardedPullMock.mockImplementationOnce(async () => {
+      guard.recordPull();
+      return {
+        ok: true,
+        merged: [],
+        message: "Sin cambios remotos.",
+      };
     });
     render(<SyncStatusChip />);
 

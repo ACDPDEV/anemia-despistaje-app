@@ -192,7 +192,7 @@ describe("App sidebar shell", () => {
   it("answers safety from the shell footer when the padron is clean", () => {
     render(<App />);
     expect(screen.getByTestId("sync-status-chip")).toHaveTextContent(
-      "A salvo en este equipo",
+      "Guardado en este equipo · sin sincronizar",
     );
   });
 

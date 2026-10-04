@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   bySeverity,
   findPossibleDuplicates,
@@ -25,6 +25,7 @@ import {
 } from "./ui/table";
 import { DIAGNOSIS_BADGE } from "./DashboardView";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
+import { useSlidingExpiry } from "../hooks/useSlidingExpiry";
 
 const COLUMN_COUNT = 6;
 
@@ -32,7 +33,9 @@ const COLUMN_COUNT = 6;
 const UNDO_TIMEOUT_MS = 8000;
 // Honest undo stack: single-slot silently dropped the earlier net, so keep
 // up to 3 pending groups with independent timers; the oldest is evicted
-// with an announcement when a fourth lands.
+// with an announcement when a fourth lands. The notice lives as long as
+// the oldest SURVIVING group (not its own timer): it clears when that
+// group is undone/expires, or when the next delete replaces it.
 const UNDO_STACK_MAX = 3;
 const EVICTION_MESSAGE = "Se expiró un deshacer anterior.";
 
@@ -77,8 +80,18 @@ export function PadronView({
   const [evictionNotice, setEvictionNotice] = useState<string | null>(null);
   const undoKey = useRef(0);
   const undoTimers = useRef(new Map<number, number>());
-  const evictionTimer = useRef<number | undefined>(undefined);
-  const bulkConfirmTimer = useRef<number | undefined>(undefined);
+  // Which surviving group the eviction notice is tied to: the oldest group
+  // that remained after the eviction. Clearing happens in dismissGroup when
+  // that key leaves (undo or 8s expiry), or on the next delete (see
+  // pushUndoGroup). No independent 4s timer on purpose — the notice must
+  // never outlive nothing it describes nor vanish mid-window.
+  const evictionTiedKey = useRef<number | null>(null);
+  // Armed bulk confirm auto-disarms on a sliding 4s fuse (see hook).
+  const disarmBulk = useCallback(() => setBulkConfirming(false), []);
+  const { slideProps: bulkSlideProps } = useSlidingExpiry(
+    bulkConfirming,
+    disarmBulk,
+  );
   // Shortcut: arming the bulk delete moves focus to Confirmar so Enter
   // completes it; Esc cancels (see bulk effect below).
   const bulkConfirmRef = useRef<HTMLButtonElement>(null);
@@ -111,9 +124,8 @@ export function PadronView({
 
   useEffect(() => {
     setSelected(new Set());
-    setBulkConfirming(false);
-    window.clearTimeout(bulkConfirmTimer.current);
-  }, [filter]);
+    disarmBulk();
+  }, [filter, disarmBulk]);
 
   // The 8s undo window is wall-clock per group: each delete pushes its
   // own group with an independent timer; unmount clears all of them.
@@ -121,8 +133,6 @@ export function PadronView({
     return () => {
       for (const timer of undoTimers.current.values()) window.clearTimeout(timer);
       undoTimers.current.clear();
-      window.clearTimeout(bulkConfirmTimer.current);
-      window.clearTimeout(evictionTimer.current);
     };
   }, []);
 
@@ -174,6 +184,11 @@ export function PadronView({
       undoTimers.current.delete(key);
     }
     setUndoGroups((prev) => prev.filter((g) => g.key !== key));
+    // The notice is tied to the oldest surviving group's lifetime.
+    if (evictionTiedKey.current === key) {
+      evictionTiedKey.current = null;
+      setEvictionNotice(null);
+    }
   }
 
   function pushUndoGroup(ids: string[], label: string) {
@@ -189,11 +204,15 @@ export function PadronView({
         window.clearTimeout(oldestTimer);
         undoTimers.current.delete(oldest.key);
       }
-      setUndoGroups([...prev.slice(1), { key, ids, label }]);
+      const next = [...prev.slice(1), { key, ids, label }];
+      setUndoGroups(next);
+      // Tie the notice to the oldest SURVIVING group (now first).
+      evictionTiedKey.current = next[0].key;
       setEvictionNotice(EVICTION_MESSAGE);
-      window.clearTimeout(evictionTimer.current);
-      evictionTimer.current = window.setTimeout(() => setEvictionNotice(null), 4000);
     } else {
+      // No eviction: a fresh delete replaces a stale notice.
+      evictionTiedKey.current = null;
+      setEvictionNotice(null);
       setUndoGroups([...prev, { key, ids, label }]);
     }
   }
@@ -414,20 +433,13 @@ export function PadronView({
     }
   }
 
-  function disarmBulk() {
-    window.clearTimeout(bulkConfirmTimer.current);
-    setBulkConfirming(false);
-  }
-
   function handleBulkDeleteTap() {
     if (selectedVisible.length === 0) return;
     if (!bulkConfirming) {
+      // Arming starts the sliding 4s fuse via the hook effect.
       setBulkConfirming(true);
-      window.clearTimeout(bulkConfirmTimer.current);
-      bulkConfirmTimer.current = window.setTimeout(disarmBulk, 4000);
       return;
     }
-    window.clearTimeout(bulkConfirmTimer.current);
     setBulkConfirming(false);
     const ids = selectedVisible.map((p) => p.id);
     for (const id of ids) remove(id);
@@ -556,6 +568,8 @@ export function PadronView({
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget as Node)) disarmBulk();
           }}
+          onKeyDownCapture={bulkSlideProps.onKeyDownCapture}
+          onPointerOverCapture={bulkSlideProps.onPointerOverCapture}
         >
           <p className="text-sm text-muted-foreground">
             {selectedVisible.length === 1
@@ -709,34 +723,24 @@ function PadronRow({
     findPossibleDuplicates(paciente.nombre).length > 1;
   // Two-tap delete guard: the first tap arms the confirm state in place
   // (same button keeps focus), the second tap confirms. Cancelar, Esc,
-  // focus leaving the group, or a ~4s timeout disarms with no delete.
+  // focus leaving the group, or a sliding ~4s fuse disarms with no delete
+  // (any keydown/pointerenter inside the group restarts the fuse).
   // Shortcut: arming moves focus to Confirmar so Enter completes the
   // armed delete; Esc already cancels.
   const [confirming, setConfirming] = useState(false);
-  const confirmTimer = useRef<number | undefined>(undefined);
+  const disarm = useCallback(() => setConfirming(false), []);
+  const { slideProps } = useSlidingExpiry(confirming, disarm);
   const confirmRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    return () => window.clearTimeout(confirmTimer.current);
-  }, []);
 
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
   }, [confirming]);
 
-  function disarm() {
-    window.clearTimeout(confirmTimer.current);
-    setConfirming(false);
-  }
-
   function handleDeleteTap() {
     if (!confirming) {
       setConfirming(true);
-      window.clearTimeout(confirmTimer.current);
-      confirmTimer.current = window.setTimeout(disarm, 4000);
       return;
     }
-    window.clearTimeout(confirmTimer.current);
     setConfirming(false);
     remove(paciente.id);
     onDeleted(paciente.id, paciente.nombre);
@@ -769,6 +773,8 @@ function PadronRow({
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget as Node)) disarm();
           }}
+          onKeyDownCapture={slideProps.onKeyDownCapture}
+          onPointerOverCapture={slideProps.onPointerOverCapture}
         >
           <Button
             type="button"
@@ -861,16 +867,31 @@ function PadronEditRow({
     nombre !== initialNombre || edad !== initialEdad || hb !== initialHb;
   // Two-tap discard grammar, mirroring the delete guards: the first tap
   // (Cancelar, Esc, row-switch, filter gesture) arms "Descartar cambios?",
-  // the second confirms the discard. "Seguir editando" or a ~4s timeout
-  // disarms with the draft intact.
+  // the second confirms the discard. "Seguir editando" or a sliding ~4s
+  // fuse disarms with the draft intact (any keydown/pointerenter inside
+  // the action group restarts the fuse).
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
-  const discardTimer = useRef<number | undefined>(undefined);
   const discardConfirmRef = useRef<HTMLButtonElement>(null);
 
   // High-stakes focus: the Nombre field takes focus on mount so keyboard
   // users start typing immediately. Queried by id (the shared Input does
   // not take a ref) — the id is row-scoped, so the query is unambiguous.
   const nombreInputId = `nombre-${paciente.id}`;
+  function focusNombre() {
+    document.getElementById(nombreInputId)?.focus();
+  }
+  // Timeout disarm drops the parked switch/filter and hands focus back
+  // to Nombre: the Descartar button unmounts, and focus must never fall
+  // through to <body>.
+  const handleDiscardExpire = useCallback(() => {
+    setConfirmingDiscard(false);
+    onDiscardDisarm();
+    document.getElementById(`nombre-${paciente.id}`)?.focus();
+  }, [onDiscardDisarm, paciente.id]);
+  const { slideProps: discardSlideProps } = useSlidingExpiry(
+    confirmingDiscard,
+    handleDiscardExpire,
+  );
   useEffect(() => {
     document.getElementById(nombreInputId)?.focus();
   }, [nombreInputId]);
@@ -897,16 +918,7 @@ function PadronEditRow({
     }
   }, [discardSignal]);
 
-  useEffect(() => {
-    return () => window.clearTimeout(discardTimer.current);
-  }, []);
-
-  function focusNombre() {
-    document.getElementById(nombreInputId)?.focus();
-  }
-
   function disarmDiscard() {
-    window.clearTimeout(discardTimer.current);
     if (confirmingDiscard) {
       setConfirmingDiscard(false);
       onDiscardDisarm();
@@ -914,16 +926,8 @@ function PadronEditRow({
   }
 
   function armDiscard() {
+    // Arming starts the sliding 4s fuse via the hook effect.
     setConfirmingDiscard(true);
-    window.clearTimeout(discardTimer.current);
-    // Timeout disarm drops the parked switch/filter and hands focus back
-    // to Nombre: the Descartar button unmounts, and focus must never fall
-    // through to <body>.
-    discardTimer.current = window.setTimeout(() => {
-      setConfirmingDiscard(false);
-      onDiscardDisarm();
-      focusNombre();
-    }, 4000);
   }
 
   // Single cancel entry point for Cancelar clicks and Esc: clean drafts
@@ -938,7 +942,6 @@ function PadronEditRow({
       armDiscard();
       return;
     }
-    window.clearTimeout(discardTimer.current);
     setConfirmingDiscard(false);
     onDiscardConfirm();
   }
@@ -1077,6 +1080,8 @@ function PadronEditRow({
                 disarmDiscard();
               }
             }}
+            onKeyDownCapture={discardSlideProps.onKeyDownCapture}
+            onPointerOverCapture={discardSlideProps.onPointerOverCapture}
           >
             <Button
               type="submit"

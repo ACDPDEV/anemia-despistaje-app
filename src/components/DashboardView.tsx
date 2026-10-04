@@ -2,11 +2,9 @@ import { useState } from "react";
 import {
   Bar,
   BarChart,
-  CartesianGrid,
   Cell,
   LabelList,
   ResponsiveContainer,
-  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
@@ -217,26 +215,6 @@ export function DashboardView() {
         </Card>
       </div>
 
-      <div data-testid="band-counts" className="grid grid-cols-2 gap-4">
-        {BANDS.map((band) => (
-          <Card key={band}>
-            <CardHeader>
-              <Badge variant={DIAGNOSIS_BADGE[band]}>{band}</Badge>
-            </CardHeader>
-            <CardContent>
-              <p
-                className={cn(
-                  "text-xl font-semibold",
-                  counts[band] === 0 && "text-muted-foreground",
-                )}
-              >
-                {counts[band]}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
       <details
         data-testid="charts-disclosure"
         open={chartsOpen}
@@ -247,6 +225,28 @@ export function DashboardView() {
           {chartsOpen ? "Ocultar gráficos" : "Ver gráficos"}
         </summary>
         <div className="flex flex-col gap-6">
+          {/* Distribution data lives with the charts behind the disclosure:
+              the 4 band counts duplicate chart-owned data, so the first
+              screen stays sentence + hero + 3 KPIs (4 numbers). */}
+          <div data-testid="band-counts" className="grid grid-cols-2 gap-4">
+            {BANDS.map((band) => (
+              <Card key={band}>
+                <CardHeader>
+                  <Badge variant={DIAGNOSIS_BADGE[band]}>{band}</Badge>
+                </CardHeader>
+                <CardContent>
+                  <p
+                    className={cn(
+                      "text-xl font-semibold",
+                      counts[band] === 0 && "text-muted-foreground",
+                    )}
+                  >
+                    {counts[band]}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
           <Card>
         <CardHeader>
           <CardTitle>Distribución de hemoglobina</CardTitle>
@@ -258,7 +258,6 @@ export function DashboardView() {
           <div data-testid="hb-chart" className="h-[220px] w-full min-w-0">
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={hbData}>
-                <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="band"
                   tick={{ fontSize: 11 }}
@@ -268,7 +267,6 @@ export function DashboardView() {
                   }
                 />
                 <YAxis hide />
-                <Tooltip />
                 <Bar dataKey="count" isAnimationActive={false}>
                   {hbData.map((d) => (
                     <Cell key={d.band} fill={SEVERITY_FILL[d.band]} />
@@ -314,10 +312,8 @@ export function DashboardView() {
           <div data-testid="age-chart" className="h-[220px] w-full min-w-0">
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={ageData}>
-                <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="band" tick={{ fontSize: 11 }} interval={0} />
                 <YAxis hide />
-                <Tooltip />
                 <Bar dataKey="count" isAnimationActive={false}>
                   {ageData.map((d) => (
                     <Cell key={d.band} fill={SEVERITY_FILL[ageRisk[d.band]]} />
