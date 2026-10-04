@@ -8,6 +8,7 @@ import {
 } from "../stores/padronStore";
 import { normalizeNombre } from "../lib/normalize";
 import { buildPadronCsv, padronFilename } from "../lib/padronExport";
+import { formatLastSyncAgo, lastPullAt } from "../lib/syncGuard";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -53,6 +54,14 @@ export function PadronView({
   const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
   const restore = usePadronStore((s) => s.restore);
   const remove = usePadronStore((s) => s.remove);
+  // Print-only pending queue: dirty rows (tombstones included) over the full
+  // store, not the visible slice. Same stable selector as `pacientes` (the
+  // filter runs during render) so the subscription never re-fires on its
+  // own derived array. Hooked beside the other selectors so the empty-state
+  // early return below never changes the hook order.
+  const pendingSyncCount = usePadronStore((s) => s.pacientes).filter(
+    (p) => p.dirty,
+  ).length;
   const [filter, setFilter] = useState("");
   const [gravesPrimero, setGravesPrimero] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -369,6 +378,16 @@ export function PadronView({
         visible.length;
   const now = new Date();
   const todayStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  // Print-only sync receipt: reuses the chip's formatLastSyncAgo over
+  // syncGuard lastPullAt. No subscription on purpose: the header only
+  // matters at print time and reads the live module binding on each render.
+  // Screen unchanged.
+  const printReceipt =
+    lastPullAt === null
+      ? "Sin sincronizar aún"
+      : formatLastSyncAgo(
+          Math.max(0, Math.floor((Date.now() - lastPullAt) / 1000)),
+        );
 
   // Bulk scope is always selected ∩ visible: select-all covers the
   // filtered set only, never the whole padrón.
@@ -476,6 +495,14 @@ export function PadronView({
           {visibleModerateSevere} · Promedio Hb: {visibleAverageHb.toFixed(1)}{" "}
           g/dL
         </p>
+        <p className="text-sm">
+          {pendingSyncCount === 0
+            ? "Sin cambios pendientes de sincronización"
+            : pendingSyncCount === 1
+              ? "1 pendiente por sincronizar"
+              : `${pendingSyncCount} pendientes por sincronizar`}{" "}
+          · {printReceipt}
+        </p>
       </div>
       <p role="status" className="text-sm text-muted-foreground">
         Moderada + Severa (en vista): {visibleModerateSevere} de{" "}
@@ -532,8 +559,8 @@ export function PadronView({
         >
           <p className="text-sm text-muted-foreground">
             {selectedVisible.length === 1
-              ? "1 seleccionado"
-              : `${selectedVisible.length} seleccionados`}
+              ? "1 seleccionado en vista"
+              : `${selectedVisible.length} seleccionados en vista`}
           </p>
           {bulkConfirming ? (
             <>

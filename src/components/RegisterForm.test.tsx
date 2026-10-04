@@ -151,6 +151,33 @@ describe("RegisterForm", () => {
     expect(warning.closest("span")!.className).toMatch(/text-warning/);
   });
 
+  it("keeps the single-match sentence naming the existing patient", () => {
+    usePadronStore
+      .getState()
+      .add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
+    render(<RegisterForm />);
+    fillAndSubmit("maria lopez", "24", "12.0");
+    expect(screen.getByText(/posible duplicado/i)).toHaveTextContent(
+      "Posible duplicado: ya existe un paciente llamado María López.",
+    );
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("names the count when several patients share the name", () => {
+    const { add } = usePadronStore.getState();
+    add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Maria Lopez", edadMeses: 30, nivelHemoglobina: 11.0 });
+    render(<RegisterForm />);
+    fillAndSubmit("maria lopez", "24", "12.0");
+    const warning = screen.getByText(/posible duplicado/i);
+    expect(warning).toHaveTextContent(
+      "Posible duplicado: ya existen 2 pacientes con ese nombre. Revisa el padrón antes de registrar.",
+    );
+    // Still warning-only: nothing blocks the registration.
+    expect(warning.closest('[role="status"]')).not.toBeNull();
+    expect(usePadronStore.getState().pacientes).toHaveLength(3);
+  });
+
   it("dismisses the duplicate hint without losing the registration", () => {
     usePadronStore
       .getState()

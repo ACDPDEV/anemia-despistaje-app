@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
+import { recordPull, resetSyncGuardForTests } from "../lib/syncGuard";
 import { PadronView } from "./PadronView";
 
 beforeEach(() => {
@@ -506,7 +507,7 @@ describe("PadronView", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: /pacientes visibles/i }),
     );
-    expect(screen.getByText("1 seleccionado")).toBeInTheDocument();
+    expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
     expect(
       screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
     ).toBeChecked();
@@ -522,7 +523,7 @@ describe("PadronView", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
     );
-    expect(screen.getByText("1 seleccionado")).toBeInTheDocument();
+    expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/buscar/i), {
       target: { value: "luis" },
     });
@@ -547,7 +548,7 @@ describe("PadronView", () => {
     expect(
       (screen.getByRole("checkbox", { name: /pacientes visibles/i }) as HTMLInputElement).indeterminate,
     ).toBe(false);
-    expect(screen.getByText("2 seleccionados")).toBeInTheDocument();
+    expect(screen.getByText("2 seleccionados en vista")).toBeInTheDocument();
   });
 
   it("deletes the selected rows after a single confirm and restores all with one undo", () => {
@@ -556,7 +557,7 @@ describe("PadronView", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: /pacientes visibles/i }),
     );
-    expect(screen.getByText("2 seleccionados")).toBeInTheDocument();
+    expect(screen.getByText("2 seleccionados en vista")).toBeInTheDocument();
     // First tap only arms the batch guard: nothing deleted yet.
     fireEvent.click(
       screen.getByRole("button", { name: /eliminar seleccionados/i }),
@@ -1026,5 +1027,52 @@ describe("PadronView export actions", () => {
     render(<PadronView />);
     fireEvent.click(screen.getByRole("button", { name: /imprimir/i }));
     expect(printSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PadronView bulk scope + print sync state", () => {
+  it("names the bulk count as the visible view, never the whole padron", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    );
+    expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a luis paz/i }),
+    );
+    expect(screen.getByText("2 seleccionados en vista")).toBeInTheDocument();
+  });
+
+  it("keeps the select-all scope on the visible patients", () => {
+    seedTwo();
+    render(<PadronView />);
+    expect(
+      screen.getByRole("checkbox", { name: /seleccionar pacientes visibles/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("prints the pending count with the never-synced receipt", () => {
+    resetSyncGuardForTests();
+    seedTwo();
+    const { container } = render(<PadronView />);
+    const header = container.querySelector(".padron-print-header");
+    expect(header).not.toBeNull();
+    expect(header).toHaveTextContent("2 pendientes por sincronizar");
+    expect(header).toHaveTextContent("Sin sincronizar aún");
+  });
+
+  it("prints the clean state with the last-sync receipt", () => {
+    resetSyncGuardForTests();
+    seedTwo();
+    const { markSynced } = usePadronStore.getState();
+    markSynced(usePadronStore.getState().pacientes.map((p) => p.id));
+    recordPull(Date.now() - 125_000);
+    const { container } = render(<PadronView />);
+    const header = container.querySelector(".padron-print-header");
+    expect(header).toHaveTextContent(
+      "Sin cambios pendientes de sincronización",
+    );
+    expect(header).toHaveTextContent("Última sincronización hace 2 min");
   });
 });

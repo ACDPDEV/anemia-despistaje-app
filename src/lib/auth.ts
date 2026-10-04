@@ -1,5 +1,6 @@
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseClient } from "./supabase";
+import { toSpanishErrorMessage } from "./errorMessages";
 
 // Thin seam over supabase-js auth. Unconfigured (no credentials) the client
 // is null and every call is a no-op so the app stays fully offline-first.
@@ -43,7 +44,7 @@ export async function getSession(
   const client = resolveClient(explicit);
   if (!client) return null;
   const { data, error } = await client.auth.getSession();
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(toSpanishErrorMessage(error.message));
   return data.session;
 }
 
@@ -58,7 +59,7 @@ export async function signInWithPassword(
     email,
     password,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(toSpanishErrorMessage(error.message));
   const session = (data as { session?: Session | null }).session ?? null;
   return session;
 }
@@ -81,7 +82,7 @@ export async function signUp(
   const client = resolveClient(explicit);
   if (!client) throw new Error("La autenticación no está configurada en este equipo.");
   const { data, error } = await client.auth.signUp({ email, password });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(toSpanishErrorMessage(error.message));
   const session =
     (data as { session?: Session | null }).session ?? null;
   const user = (data as { user?: unknown }).user ?? null;
@@ -98,7 +99,7 @@ export async function signOut(
   const client = resolveClient(explicit);
   if (!client) return;
   const { error } = await client.auth.signOut();
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(toSpanishErrorMessage(error.message));
 }
 
 export function onAuthStateChange(

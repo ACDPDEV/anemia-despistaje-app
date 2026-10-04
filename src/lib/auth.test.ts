@@ -100,7 +100,7 @@ describe("auth module", () => {
     });
     await expect(
       signInWithPassword("a@b.c", "wrong", { auth: failing } as never),
-    ).rejects.toThrow("Invalid login credentials");
+    ).rejects.toThrow("Correo o contraseña incorrectos.");
   });
 
   it("signs out and forwards the unsubscribe", async () => {
@@ -180,6 +180,6 @@ describe("auth module", () => {
     });
     await expect(
       signUp("a@b.c", "secret", { auth: failing } as never),
-    ).rejects.toThrow("User already registered");
+    ).rejects.toThrow("Ese correo ya está registrado.");
   });
 });

@@ -393,8 +393,12 @@ describe("createSupabaseSyncTable", () => {
         upsert: async () => ({ error: { message: "boom" } }),
       }),
     } as unknown as SupabaseClient);
-    await expect(failing.fetchAll()).rejects.toThrow("boom");
-    await expect(failing.upsert(rows)).rejects.toThrow("boom");
+    await expect(failing.fetchAll()).rejects.toThrow(
+      "No se pudo completar la operación. Inténtalo de nuevo.",
+    );
+    await expect(failing.upsert(rows)).rejects.toThrow(
+      "No se pudo completar la operación. Inténtalo de nuevo.",
+    );
   });
 
   it("does not resurrect purged tombstones: remote-only deleted rows stay dropped", () => {

@@ -56,9 +56,13 @@ export function RegisterForm() {
 
     // Warning-only duplicate signal: computed after validation, never blocks add.
     const matches = findPossibleDuplicates(nombre);
-    if (matches.length > 0) {
+    if (matches.length === 1) {
       setDuplicateWarning(
         `Posible duplicado: ya existe un paciente llamado ${matches[0].nombre}.`,
+      );
+    } else if (matches.length > 1) {
+      setDuplicateWarning(
+        `Posible duplicado: ya existen ${matches.length} pacientes con ese nombre. Revisa el padrón antes de registrar.`,
       );
     }
 

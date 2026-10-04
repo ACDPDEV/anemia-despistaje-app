@@ -14,6 +14,7 @@ import {
   SYNCING_LABEL,
 } from "../lib/syncGuard";
 import { Button } from "./ui/button";
+import { toSpanishErrorMessage } from "../lib/errorMessages";
 
 // Quiet footer chip: pending-to-sync count plus connectivity, now with the
 // first honest sync call-site. Push runs through runGuarded, pull through
@@ -96,7 +97,7 @@ export function SyncStatusChip() {
     } catch (err) {
       fail(
         err instanceof Error
-          ? err.message
+          ? toSpanishErrorMessage(err.message)
           : "No se pudo sincronizar. Inténtalo de nuevo.",
       );
       return;
@@ -139,7 +140,7 @@ export function SyncStatusChip() {
     } catch (err) {
       fail(
         err instanceof Error
-          ? err.message
+          ? toSpanishErrorMessage(err.message)
           : "No se pudo sincronizar. Inténtalo de nuevo.",
       );
     }

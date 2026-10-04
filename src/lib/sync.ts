@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePatient } from "../domain/anemia";
 import type { Paciente } from "../stores/padronStore";
+import { toSpanishErrorMessage } from "./errorMessages";
 
 // Manual, offline-tolerant sync between the local padron (source of truth)
 // and Supabase (deferred remote replica). No auto-sync: every function runs
@@ -211,11 +212,11 @@ export function createSupabaseSyncTable(client: SupabaseClient): SyncTable {
         const query = handle.select("*");
         if (typeof query.range !== "function") {
           const { data, error } = await query;
-          if (error) throw new Error(error.message);
+          if (error) throw new Error(toSpanishErrorMessage(error.message));
           return (data ?? []) as RemotePacienteRow[];
         }
         const { data, error } = await query.range(from, from + SYNC_PAGE_SIZE - 1);
-        if (error) throw new Error(error.message);
+        if (error) throw new Error(toSpanishErrorMessage(error.message));
         const rows = (data ?? []) as RemotePacienteRow[];
         all.push(...rows);
         if (rows.length < SYNC_PAGE_SIZE) return all;
@@ -224,7 +225,7 @@ export function createSupabaseSyncTable(client: SupabaseClient): SyncTable {
     },
     upsert: async (rows) => {
       const { error } = await handle.upsert(rows);
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(toSpanishErrorMessage(error.message));
     },
   };
 }

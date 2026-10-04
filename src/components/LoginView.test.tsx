@@ -42,7 +42,7 @@ describe("LoginView", () => {
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Invalid login credentials",
+        "Correo o contraseña incorrectos. Revísalos e inténtalo de nuevo.",
       ),
     );
   });
@@ -111,7 +111,7 @@ describe("LoginView", () => {
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Invalid login credentials",
+        "Correo o contraseña incorrectos. Revísalos e inténtalo de nuevo.",
       ),
     );
     expect(screen.getByLabelText(/correo/i)).not.toHaveAttribute(
@@ -253,7 +253,7 @@ describe("LoginView", () => {
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "User already registered",
+        "Ese correo ya está registrado. Inicia sesión o usa otro correo.",
       ),
     );
   });

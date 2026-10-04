@@ -7,6 +7,7 @@ import {
   signInWithPassword,
   signUp,
 } from "../lib/auth";
+import { toSpanishErrorMessage } from "../lib/errorMessages";
 
 // Login + sign-up form with Spanish labels. When Supabase credentials are
 // missing the app stays fully offline-first: an offline/local-only notice
@@ -65,7 +66,7 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
     } catch (err) {
       setFormError(
         err instanceof Error
-          ? err.message
+          ? toSpanishErrorMessage(err.message)
           : mode === "signup"
             ? "No se pudo crear la cuenta."
             : "No se pudo iniciar sesión.",

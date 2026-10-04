@@ -229,6 +229,20 @@ describe("SyncStatusChip", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("maps a raw English provider failure to Spanish at the alert surface", async () => {
+    seedDirty();
+    pushMock.mockRejectedValueOnce(new Error("Failed to fetch"));
+    render(<SyncStatusChip />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Sin conexión. Revisa tu red e inténtalo de nuevo.",
+    );
+    expect(alert.textContent).not.toMatch(/fetch/i);
+  });
+
   it("voices a refused push outcome without losing the queue", async () => {
     seedDirty();
     pushMock.mockResolvedValue({
