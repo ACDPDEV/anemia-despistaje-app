@@ -219,6 +219,10 @@ export function useSyncAction(): SyncAction {
 // Shared sync button (expanded chip + phone rows): same tag, same
 // shortcut, same disabled grammar. The collapsed chip keeps its own
 // icon-button JSX (different visual) but the same tag + hook handler.
+// run-28 P3-1 (polish, documented skip): the busy label (SYNCING_LABEL)
+// stays label-only with no spinner — no Loader2/animate-spin precedent
+// exists, and this chip is pinned "no animation" by design (quiet sync
+// surface; craft-floor refuses scattered motion as decoration).
 export function SyncActionButton({
   label,
   syncing,

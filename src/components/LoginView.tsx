@@ -138,6 +138,11 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
             {formError}
           </p>
         )}
+        {/* run-28 P3-1 (polish, documented skip): pending stays label-only
+            ("Iniciando sesión…" / "Creando cuenta…") with disabled grammar
+            and no spinner. No Loader2/animate-spin precedent exists in the
+            codebase, and scattered motion would break the quiet capture
+            surface (craft-floor: one authored moment, never decoration). */}
         <Button type="submit" disabled={busy}>
           {isSignup
             ? pending

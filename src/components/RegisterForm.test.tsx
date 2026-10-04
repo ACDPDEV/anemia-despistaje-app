@@ -156,9 +156,10 @@ describe("RegisterForm", () => {
   });
 
   it("cues the capture-moment triage inside the help disclosure, not the hint", () => {
-    // run-27 P2-1 (distill): the visible hb-hint holds 3 spans (example,
-    // comma, cutoffs) with margin; the triage cue lives on demand inside
-    // the ¿Cómo registro? disclosure. Same Spanish copy, verbatim.
+    // run-28 P2-1 (clarify, option a): the visible hb-hint holds 3 spans
+    // (example, comma, cutoffs) with margin; the triage cue is discoverable
+    // WITHOUT opening the disclosure via the always-visible summary line,
+    // with the full sentence verbatim in the disclosure body.
     render(<RegisterForm />);
     const triage = screen.getByTestId("hb-triage");
     expect(triage).toHaveTextContent(
@@ -168,10 +169,15 @@ describe("RegisterForm", () => {
     const help = screen.getByTestId("register-help");
     expect(help).toContainElement(triage);
     expect(triage.closest("[id='hb-hint']")).toBeNull();
+    // Discoverable closed: the summary line names the cue (one line, no
+    // extra hint span) so no tap is needed to learn it.
+    const summary = help.querySelector("summary")!;
+    expect(summary).toHaveTextContent(/moderada\/severa → panel/i);
     // Visible hint keeps margin: exactly 3 spans (example, comma, cutoffs).
     const hint = document.getElementById("hb-hint")!;
     expect(hint.querySelectorAll(":scope > span")).toHaveLength(3);
     expect(hint).not.toHaveTextContent(/seguimiento en el panel/i);
+    expect(hint).not.toHaveTextContent(/moderada\/severa → panel/i);
   });
 
   it("flags only the offending field with a wired aria-describedby", () => {
@@ -369,11 +375,15 @@ describe("RegisterForm", () => {
     }
     expect(help).toHaveTextContent(/alt\+s/i);
     expect(help).toHaveTextContent(/alt\+g/i);
-    // The triage cue lives here on demand (run-27 P2-1), verbatim.
+    // The triage cue: summary line (always visible, run-28 P2-1) plus the
+    // full sentence verbatim in the body.
     expect(help).toHaveTextContent(/moderada o severa → seguimiento en el panel/i);
-    // Shared HelpSteps: the view-scoping line reads intentionally here
-    // too — this disclosure IS Registro's own help.
-    expect(help).toHaveTextContent(/cada vista explica lo suyo/i);
+    expect(help.querySelector("summary")).toHaveTextContent(
+      /moderada\/severa → panel/i,
+    );
+    // run-28 P2-2 (distill): the meta scoping line is gone; the shortcuts
+    // line above already scopes via the differentiated stems.
+    expect(help).not.toHaveTextContent(/cada vista explica lo suyo/i);
     // Outside the Hb hint wiring: the disclosure is its own stop, not
     // field-hint noise on every Hb focus.
     const hb = screen.getByLabelText(/hemoglobina/i);

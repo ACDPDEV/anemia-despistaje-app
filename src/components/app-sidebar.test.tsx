@@ -133,9 +133,11 @@ describe("AppSidebar footer controls", () => {
     }
     expect(help).toHaveTextContent(/alt\+s/i);
     expect(help).toHaveTextContent(/alt\+g/i);
-    // View-scoped entries are named as intentional scoping, not drift:
-    // each view teaches its own scope in its own help disclosure.
-    expect(help).toHaveTextContent(/cada vista explica lo suyo/i);
+    // run-28 P2-2 (distill): the meta scoping line is gone — the three
+    // differentiated stems (Registro/Padrón/Panel) plus this global stem
+    // already communicate the scope. The shortcuts line stays.
+    expect(help).not.toHaveTextContent(/cada vista explica lo suyo/i);
+    expect(help).toHaveTextContent(/atajos:/i);
   });
 
   it("names the Alt+G sync shortcut in the shortcuts line", () => {

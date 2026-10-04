@@ -191,16 +191,19 @@ export function RegisterForm() {
           </FieldDescription>
           {/* Contextual help at the most-confusing moment (the Hb cutoffs):
               the SAME 4 steps as the sidebar footer, behind one quiet
-              details/summary line. Muted and small so it never competes
-              with the form; outside the hb-hint description so screen
-              readers meet it as its own disclosure, not as field hint
-              noise on every Hb focus. */}
+              details/summary line. The summary itself carries the triage
+              cue (run-28 P2-1): always visible without opening the
+              disclosure, one tap still opens the full steps. Muted and
+              small so it never competes with the form; outside the
+              hb-hint description so screen readers meet it as its own
+              disclosure, not as field hint noise on every Hb focus. The
+              full cue sentence stays verbatim in the disclosure body. */}
           <details
             data-testid="register-help"
             className="text-xs text-muted-foreground"
           >
             <summary className="cursor-pointer underline-offset-4 hover:underline pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
-              ¿Cómo registro?
+              ¿Cómo registro? · Moderada/Severa → Panel
             </summary>
             <HelpSteps />
             <p className="mt-1" data-testid="hb-triage">

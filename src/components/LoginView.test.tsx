@@ -250,4 +250,35 @@ describe("LoginView", () => {
       ),
     );
   });
+
+  it("keeps the pending state label-only with no spinner (run-28 P3-1 documented skip)", async () => {
+    // No Loader2/animate-spin precedent in the codebase; scattered motion
+    // would break the quiet capture surface, so busy stays an honest
+    // label + disabled grammar. Pinned here so a future spinner addition
+    // is a deliberate decision, not drift.
+    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
+    let release!: () => void;
+    const gate = new Promise<null>((resolve) => {
+      release = () => resolve(null);
+    });
+    vi.spyOn(auth, "signInWithPassword").mockReturnValue(gate);
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    const busy = await screen.findByRole("button", {
+      name: /iniciando sesión/i,
+    });
+    expect(busy).toBeDisabled();
+    // No spinner element, no animation class — label-only by decision.
+    expect(busy.querySelector("svg")).toBeNull();
+    expect(document.querySelector(".animate-spin")).toBeNull();
+    release();
+  });
 });

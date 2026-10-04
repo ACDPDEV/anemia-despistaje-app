@@ -306,6 +306,37 @@ describe("SyncStatusChip", () => {
     await screen.findByRole("button", { name: /^sincronizar$/i });
   });
 
+  it("keeps the syncing state label-only with no spinner (run-28 P3-1 documented skip)", async () => {
+    // Same skip as LoginView: no Loader2/animate-spin precedent, and this
+    // chip is pinned "no animation" by design. The busy truth is the
+    // SYNCING_LABEL text + disabled grammar, pinned here.
+    seedDirty();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    pushMock.mockImplementation(
+      () =>
+        gate.then(() => ({
+          ok: true,
+          pushedIds: [],
+          message: "ok",
+        })) as Promise<never>,
+    );
+    render(<SyncStatusChip />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+
+    const syncing = await screen.findByRole("button", {
+      name: /sincronizando/i,
+    });
+    expect(syncing).toBeDisabled();
+    expect(syncing.querySelector("svg")).toBeNull();
+    expect(document.querySelector(".animate-spin")).toBeNull();
+    release();
+    await screen.findByRole("button", { name: /^sincronizar$/i });
+  });
+
   it("voices a push failure with its cause and retries on demand", async () => {
     const id = seedDirty();
     pushMock.mockResolvedValue({
