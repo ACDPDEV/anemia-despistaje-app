@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
 import { useRegisterDraftStore } from "../stores/registerDraftStore";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
@@ -116,7 +116,7 @@ describe("RegisterForm", () => {
       .add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
     render(<RegisterForm />);
     fillAndSubmit("maria lopez", "24", "12.0");
-    const warning = screen.getByText(/posible duplicado/i);
+    const warning = within(screen.getByRole("status")).getByText(/posible duplicado/i);
     expect(warning).toBeInTheDocument();
     expect(warning.className).toMatch(/text-warning/);
     expect(warning.className).not.toMatch(/amber-700/);
@@ -162,7 +162,7 @@ describe("RegisterForm", () => {
     fillAndSubmit("maria lopez", "24", "12.0");
 
     // Warning, not alert: a status never steals typing focus.
-    const warning = screen.getByText(/posible duplicado/i);
+    const warning = within(screen.getByRole("status")).getByText(/posible duplicado/i);
     const liveRegion = warning.closest('[role="status"]')!;
     expect(liveRegion.getAttribute("role")).toBe("status");
     // Serialized announcer: success and warning share ONE status, ordered.
@@ -179,7 +179,7 @@ describe("RegisterForm", () => {
       .add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
     render(<RegisterForm />);
     fillAndSubmit("maria lopez", "24", "12.0");
-    expect(screen.getByText(/posible duplicado/i)).toHaveTextContent(
+    expect(within(screen.getByRole("status")).getByText(/posible duplicado/i)).toHaveTextContent(
       "Posible duplicado: ya existe un paciente llamado María López.",
     );
     expect(screen.getByRole("status")).toBeInTheDocument();
@@ -191,7 +191,7 @@ describe("RegisterForm", () => {
     add({ nombre: "Maria Lopez", edadMeses: 30, nivelHemoglobina: 11.0 });
     render(<RegisterForm />);
     fillAndSubmit("maria lopez", "24", "12.0");
-    const warning = screen.getByText(/posible duplicado/i);
+    const warning = within(screen.getByRole("status")).getByText(/posible duplicado/i);
     expect(warning).toHaveTextContent(
       "Posible duplicado: ya existen 2 pacientes con ese nombre. Revisa el padrón antes de registrar.",
     );
@@ -206,9 +206,13 @@ describe("RegisterForm", () => {
       .add({ nombre: "José", edadMeses: 24, nivelHemoglobina: 12.0 });
     render(<RegisterForm />);
     fillAndSubmit("Jose", "24", "12.0");
-    expect(screen.getByText(/posible duplicado/i)).toBeInTheDocument();
+    expect(within(screen.getByRole("status")).getByText(/posible duplicado/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /descartar/i }));
-    expect(screen.queryByText(/posible duplicado/i)).not.toBeInTheDocument();
+    // The live-region warning is gone (the contextual help step keeps its
+    // own "duplicado" line elsewhere, so the assertion scopes to status).
+    expect(
+      within(screen.getByRole("status")).queryByText(/posible duplicado/i),
+    ).not.toBeInTheDocument();
     expect(usePadronStore.getState().pacientes).toHaveLength(2);
   });
 
@@ -219,7 +223,7 @@ describe("RegisterForm", () => {
     render(<RegisterForm />);
     fillAndSubmit("maria lopez", "24", "12.0");
 
-    const warning = screen.getByText(/posible duplicado/i);
+    const warning = within(screen.getByRole("status")).getByText(/posible duplicado/i);
     const liveRegion = warning.closest('[role="status"]')!;
     expect(liveRegion.tagName).toBe("P");
     // No interactive content inside the live region.
@@ -233,6 +237,27 @@ describe("RegisterForm", () => {
     // Real values, never retyped: the hint quotes the domain label.
     expect(screen.getByTestId("hb-cutoffs")).toHaveTextContent(HB_CUTOFF_LABEL);
     expect(HB_CUTOFF_LABEL).toMatch(/11/);
+  });
+
+  it("offers the same 4 help steps beside the Hb cutoffs, quietly", () => {
+    render(<RegisterForm />);
+    const help = screen.getByTestId("register-help");
+    // One quiet line under the cutoff hint: muted, small, never competing
+    // with the form.
+    expect(help).toHaveTextContent(/¿cómo funciona\?/i);
+    expect(help.className).toMatch(/text-muted-foreground/);
+    expect(help.className).toMatch(/text-xs/);
+    // SAME steps as the sidebar footer, verbatim.
+    for (const step of [/registra/i, /duplicado/i, /sincroniza/i, /imprime/i]) {
+      expect(help).toHaveTextContent(step);
+    }
+    expect(help).toHaveTextContent(/alt\+s/i);
+    expect(help).toHaveTextContent(/alt\+g/i);
+    // Outside the Hb hint wiring: the disclosure is its own stop, not
+    // field-hint noise on every Hb focus.
+    const hb = screen.getByLabelText(/hemoglobina/i);
+    expect(hb.getAttribute("aria-describedby")).not.toMatch(/register-help/);
+    expect(help).not.toHaveAttribute("id", "hb-hint");
   });
 
   it("caps the nombre input at 120 characters with a Spanish message", () => {

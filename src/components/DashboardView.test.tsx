@@ -27,10 +27,12 @@ describe("DashboardView", () => {
 
     // Total screened and average Hb derive from selectors
     expect(screen.getByText("Total de pacientes")).toBeInTheDocument();
-    // avg of 12.0 + 11.5 + 10.5 + 9.0 + 6.0 = 49.0 / 5
+    // avg of 12.0 + 11.5 + 10.5 + 9.0 + 6.0 = 49.0 / 5, one decimal voice
+    // shared with print and CSV through formatHb (paper was judged
+    // trustworthy, so the dashboard speaks 9.8, never 9.80).
     expect(screen.getByTestId("kpi-total")).toHaveTextContent("5");
     expect(screen.getByText("Promedio de hemoglobina")).toBeInTheDocument();
-    expect(screen.getByTestId("kpi-avg")).toHaveTextContent("9.80");
+    expect(screen.getByTestId("kpi-avg")).toHaveTextContent("9.8");
 
     // 3 of 5 have anemia → 60%; Moderada + Severa → 2
     expect(screen.getByText("Con anemia")).toBeInTheDocument();

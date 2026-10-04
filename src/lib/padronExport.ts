@@ -1,4 +1,5 @@
 import type { Paciente } from "../stores/padronStore";
+import { formatHb } from "./formatHb";
 
 export const PADRON_CSV_HEADER =
   "nombre,edad_meses,hemoglobina,diagnostico";
@@ -41,7 +42,7 @@ export function buildPadronCsv(rows: Paciente[], date: Date): string {
     `# padron ${localDateStamp(date)}`,
     `# total: ${rows.length}`,
     `# moderada+severa: ${moderateSevere}`,
-    `# promedio Hb: ${average.toFixed(1)} g/dL`,
+    `# promedio Hb: ${formatHb(average)} g/dL`,
     PADRON_CSV_HEADER,
     ...rows.map((p) =>
       [

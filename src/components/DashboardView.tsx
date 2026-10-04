@@ -15,6 +15,7 @@ import { cn } from "../lib/utils";
 import type { Diagnosis } from "../domain/anemia";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
 import { groupByAgeBand, type AgeBand } from "../lib/ageGroups";
+import { formatHb } from "../lib/formatHb";
 import { usePadronStore } from "../stores/padronStore";
 
 const BANDS: Diagnosis[] = ["Normal", "Anemia Leve", "Anemia Moderada", "Anemia Severa"];
@@ -222,7 +223,7 @@ export function DashboardView({
           </CardHeader>
           <CardContent>
             <p data-testid="kpi-avg" className="text-xl font-semibold">
-              {isEmpty ? "—" : `${avg.toFixed(2)} g/dL`}
+              {isEmpty ? "—" : `${formatHb(avg)} g/dL`}
             </p>
           </CardContent>
         </Card>

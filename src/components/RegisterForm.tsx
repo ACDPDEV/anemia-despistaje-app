@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { getDuplicateWarning, MAX_NOMBRE, usePadronStore } from "../stores/padronStore";
 import { useRegisterDraftStore } from "../stores/registerDraftStore";
 import { HB_CUTOFF_LABEL, type Diagnosis } from "../domain/anemia";
+import { HelpSteps } from "./app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -151,6 +152,21 @@ export function RegisterForm() {
               {HB_CUTOFF_LABEL}
             </span>
           </FieldDescription>
+          {/* Contextual help at the most-confusing moment (the Hb cutoffs):
+              the SAME 4 steps as the sidebar footer, behind one quiet
+              details/summary line. Muted and small so it never competes
+              with the form; outside the hb-hint description so screen
+              readers meet it as its own disclosure, not as field hint
+              noise on every Hb focus. */}
+          <details
+            data-testid="register-help"
+            className="text-xs text-muted-foreground"
+          >
+            <summary className="cursor-pointer underline-offset-4 hover:underline pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center">
+              ¿Cómo funciona?
+            </summary>
+            <HelpSteps />
+          </details>
           {hbError && <FieldError id="hb-error">{hbError}</FieldError>}
         </Field>
       {formError && (

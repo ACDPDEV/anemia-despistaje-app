@@ -11,6 +11,7 @@ import {
 } from "../stores/padronStore";
 import { normalizeNombre } from "../lib/normalize";
 import { buildPadronCsv, padronFilename } from "../lib/padronExport";
+import { formatHb } from "../lib/formatHb";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -63,7 +64,13 @@ const UNDO_TIMEOUT_MS = 8000;
 // the oldest SURVIVING group (not its own timer): it clears when that
 // group is undone/expires, or when the next delete replaces it.
 const UNDO_STACK_MAX = 3;
-const EVICTION_MESSAGE = "Se expiró un deshacer anterior.";
+// Honest eviction copy: names what happened (the oldest undo net was
+// discarded) and how many nets remain. The count derives from the
+// surviving stack at the eviction point, never a hardcoded number, so it
+// stays true if UNDO_STACK_MAX ever changes.
+export function evictionMessage(remaining: number): string {
+  return `Se descartó el deshacer más antiguo; quedan ${remaining} disponibles.`;
+}
 
 interface UndoGroup {
   key: number;
@@ -128,6 +135,18 @@ export function PadronView({
   // Honest undo stack (max 3): newest renders on top, each row restores
   // its own ids through the existing per-row restore() loop.
   const [evictionNotice, setEvictionNotice] = useState<string | null>(null);
+  // Silent-fuse cue: the sliding 4s auto-disarm is invisible to
+  // screen-reader users — they return, press Enter, and re-arm instead of
+  // confirming. Only the TIMEOUT expiry announces, through the existing
+  // triage status line below (no new announcer): manual disarms
+  // (Cancelar, Esc, blur, filter change) need none because the user just
+  // acted. Arming clears the notice so the next expiry always changes the
+  // text and re-announces. Fuse semantics (activity resets) untouched.
+  const [fuseNotice, setFuseNotice] = useState<string | null>(null);
+  const notifyFuseExpired = useCallback(() => {
+    setFuseNotice("Se canceló la confirmación.");
+  }, []);
+  const clearFuseNotice = useCallback(() => setFuseNotice(null), []);
   const undoKey = useRef(0);
   const undoTimers = useRef(new Map<number, number>());
   // Which surviving group the eviction notice is tied to: the oldest group
@@ -137,10 +156,16 @@ export function PadronView({
   // never outlive nothing it describes nor vanish mid-window.
   const evictionTiedKey = useRef<number | null>(null);
   // Armed bulk confirm auto-disarms on a sliding 4s fuse (see hook).
+  // Timeout expiry announces through the triage status line; manual
+  // disarms (Cancelar, Esc, blur, filter change) stay silent.
   const disarmBulk = useCallback(() => setBulkConfirming(false), []);
+  const handleBulkExpire = useCallback(() => {
+    disarmBulk();
+    notifyFuseExpired();
+  }, [disarmBulk, notifyFuseExpired]);
   const { slideProps: bulkSlideProps } = useSlidingExpiry(
     bulkConfirming,
-    disarmBulk,
+    handleBulkExpire,
   );
   // Shortcut: arming the bulk delete moves focus to Confirmar so Enter
   // completes it; Esc cancels (see bulk effect below).
@@ -273,7 +298,7 @@ export function PadronView({
       setUndoGroups(next);
       // Tie the notice to the oldest SURVIVING group (now first).
       evictionTiedKey.current = next[0].key;
-      setEvictionNotice(EVICTION_MESSAGE);
+      setEvictionNotice(evictionMessage(next.length));
     } else {
       // No eviction: a fresh delete replaces a stale notice.
       evictionTiedKey.current = null;
@@ -558,6 +583,7 @@ export function PadronView({
     if (!bulkConfirming) {
       // Arming starts the sliding 4s fuse via the hook effect.
       setBulkConfirming(true);
+      clearFuseNotice();
       return;
     }
     setBulkConfirming(false);
@@ -625,13 +651,13 @@ export function PadronView({
       </div>
       {/* Quiet capacity signal (P3): total registered over the full store,
           never the filtered view. Muted microcopy under the title — no
-          alarm styling at any count, including 100 de 100. */}
+          alarm styling at any count, including 100 de 100 pacientes. */}
       {pacientes.length >= CAPACITY_HINT_MIN && (
         <p
           data-testid="padron-capacity"
           className="text-xs text-muted-foreground"
         >
-          {pacientes.length} de {MAX_PADRON}
+          {pacientes.length} de {MAX_PADRON} pacientes
         </p>
       )}
       <div className="padron-print-header hidden print:block">
@@ -640,7 +666,7 @@ export function PadronView({
         </p>
         <p className="text-sm">
           Total: {visible.length} · Moderada + Severa:{" "}
-          {visibleModerateSevere} · Promedio Hb: {visibleAverageHb.toFixed(1)}{" "}
+          {visibleModerateSevere} · Promedio Hb: {formatHb(visibleAverageHb)}{" "}
           g/dL
         </p>
         <p className="text-sm">
@@ -659,6 +685,7 @@ export function PadronView({
       <p role="status" className="text-sm text-muted-foreground">
         Moderada + Severa (en vista): {visibleModerateSevere} de{" "}
         {visible.length}
+        {fuseNotice && <> · {fuseNotice}</>}
       </p>
       <div className="padron-filters flex flex-col gap-4">
         <Field>
@@ -847,6 +874,8 @@ export function PadronView({
                   onSaved={handleEditSaved}
                   onDiscardConfirm={() => handleDiscardConfirm(p.id)}
                   onDiscardDisarm={handleDiscardDisarm}
+                  onFuseExpire={notifyFuseExpired}
+                  onFuseClear={clearFuseNotice}
                 />
               ) : (
                 <PadronRow
@@ -856,6 +885,8 @@ export function PadronView({
                   onToggle={() => toggleOne(p.id)}
                   onEdit={() => handleRequestEdit(p.id)}
                   onDeleted={handleDeleted}
+                  onFuseExpire={notifyFuseExpired}
+                  onFuseClear={clearFuseNotice}
                   editButtonRef={(node) => {
                     if (node) editButtonRefs.current.set(p.id, node);
                     else editButtonRefs.current.delete(p.id);
@@ -877,6 +908,8 @@ function PadronRow({
   onEdit,
   onDeleted,
   editButtonRef,
+  onFuseExpire,
+  onFuseClear,
 }: {
   paciente: Paciente;
   selected: boolean;
@@ -884,6 +917,9 @@ function PadronRow({
   onEdit: () => void;
   onDeleted: (id: string, nombre: string) => void;
   editButtonRef?: (node: HTMLButtonElement | null) => void;
+  // Silent-fuse cue: timeout expiry announces, arming clears.
+  onFuseExpire?: () => void;
+  onFuseClear?: () => void;
 }) {
   const remove = usePadronStore((s) => s.remove);
   const isPossibleDuplicate =
@@ -896,7 +932,14 @@ function PadronRow({
   // armed delete; Esc already cancels.
   const [confirming, setConfirming] = useState(false);
   const disarm = useCallback(() => setConfirming(false), []);
-  const { slideProps } = useSlidingExpiry(confirming, disarm);
+  // Timeout expiry disarms AND announces (the quiet cue); every manual
+  // disarm path below (Cancelar, Esc, blur) calls disarm() directly and
+  // stays silent.
+  const handleExpire = useCallback(() => {
+    disarm();
+    onFuseExpire?.();
+  }, [disarm, onFuseExpire]);
+  const { slideProps } = useSlidingExpiry(confirming, handleExpire);
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -906,6 +949,7 @@ function PadronRow({
   function handleDeleteTap() {
     if (!confirming) {
       setConfirming(true);
+      onFuseClear?.();
       return;
     }
     setConfirming(false);
@@ -1019,6 +1063,8 @@ function PadronEditRow({
   onSaved,
   onDiscardConfirm,
   onDiscardDisarm,
+  onFuseExpire,
+  onFuseClear,
 }: {
   paciente: Paciente;
   // External nudge from the row-switch / filter guards: each increment
@@ -1032,6 +1078,9 @@ function PadronEditRow({
   onSaved?: (preimage: EditPreimage) => void;
   onDiscardConfirm: () => void;
   onDiscardDisarm: () => void;
+  // Silent-fuse cue: timeout expiry announces, arming clears.
+  onFuseExpire?: () => void;
+  onFuseClear?: () => void;
 }) {
   const update = usePadronStore((s) => s.update);
   const initialNombre = paciente.nombre;
@@ -1079,8 +1128,9 @@ function PadronEditRow({
   const handleDiscardExpire = useCallback(() => {
     setConfirmingDiscard(false);
     onDiscardDisarm();
+    onFuseExpire?.();
     focusNombreOnDisarm.current = true;
-  }, [onDiscardDisarm]);
+  }, [onDiscardDisarm, onFuseExpire]);
   const { slideProps: discardSlideProps } = useSlidingExpiry(
     confirmingDiscard,
     handleDiscardExpire,
@@ -1101,6 +1151,12 @@ function PadronEditRow({
   useEffect(() => {
     if (confirmingDiscard) discardConfirmRef.current?.focus();
   }, [confirmingDiscard]);
+
+  // Arming (Cancelar, Esc, row-switch, filter gesture, external signal)
+  // clears a stale fuse notice so the next timeout expiry re-announces.
+  useEffect(() => {
+    if (confirmingDiscard) onFuseClear?.();
+  }, [confirmingDiscard, onFuseClear]);
 
   // "Seguir editando" (and the fuse timeout above) disarm while the draft
   // stays open: focus returns to Nombre only after the re-render

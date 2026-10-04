@@ -855,9 +855,11 @@ describe("PadronView", () => {
       fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
       fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
     }
-    // Max 3 compact rows; the oldest net expired with an announcement.
+    // Max 3 compact rows; the oldest net expired with an announcement
+    // naming the survivors: 3 undo nets remain available.
     expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(3);
-    expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
+    expect(screen.getByText(/se descartó el deshacer más antiguo/i)).toBeInTheDocument();
+    expect(screen.getByText(/quedan 3 disponibles/i)).toBeInTheDocument();
   });
 
   it("ties the eviction notice to the oldest surviving group, not a 4s timer", () => {
@@ -878,14 +880,14 @@ describe("PadronView", () => {
       act(() => {
         vi.advanceTimersByTime(4000);
       });
-      expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
+      expect(screen.getByText(/se descartó el deshacer más antiguo/i)).toBeInTheDocument();
       expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(3);
       // Undoing the tied group (oldest surviving = Dos, rendered last)
       // dismisses the notice with it.
       const undoButtons = screen.getAllByRole("button", { name: /deshacer/i });
       fireEvent.click(undoButtons[undoButtons.length - 1]);
       expect(screen.getByText("Dos")).toBeInTheDocument();
-      expect(screen.queryByText(/se expiró un deshacer anterior/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/se descartó el deshacer más antiguo/i)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -904,17 +906,17 @@ describe("PadronView", () => {
       fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
       fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
     }
-    expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
+    expect(screen.getByText(/se descartó el deshacer más antiguo/i)).toBeInTheDocument();
     // Free a slot without touching the tied group (undo newest Cuatro):
     // notice survives because Dos is still pending.
     const newest = screen.getAllByRole("button", { name: /deshacer/i })[0];
     fireEvent.click(newest);
-    expect(screen.getByText(/se expiró un deshacer anterior/i)).toBeInTheDocument();
+    expect(screen.getByText(/se descartó el deshacer más antiguo/i)).toBeInTheDocument();
     // Next delete fits without evicting: the stale notice clears.
     const row = rowByName("Cinco");
     fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
     fireEvent.click(within(row).getByRole("button", { name: /confirmar/i }));
-    expect(screen.queryByText(/se expiró un deshacer anterior/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/se descartó el deshacer más antiguo/i)).not.toBeInTheDocument();
   });
 
   it("slides the row-delete fuse on interaction instead of expiring", () => {
@@ -1031,6 +1033,138 @@ describe("PadronView", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("PadronView armed-confirm expiry cue", () => {
+  it("announces a row-delete timeout expiry through the existing status line", () => {
+    vi.useFakeTimers();
+    try {
+      seedTwo();
+      render(<PadronView />);
+      const row = rowByName("Luis Paz");
+      fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+      // Armed, no announcement yet: the status line names only the count.
+      expect(screen.getByRole("status")).not.toHaveTextContent(/se canceló/i);
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      // The silent fuse disarmed AND said so, politely, in Spanish.
+      expect(
+        within(rowByName("Luis Paz")).queryByRole("button", {
+          name: /confirmar/i,
+        }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Se canceló la confirmación.",
+      );
+      // The triage count survives beside the notice: one region, both facts.
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /moderada \+ severa \(en vista\): 1 de 2/i,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("announces a bulk-delete timeout expiry the same way", () => {
+    vi.useFakeTimers();
+    try {
+      seedTwo();
+      render(<PadronView />);
+      fireEvent.click(
+        screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /eliminar seleccionados/i }),
+      );
+      expect(screen.getByRole("status")).not.toHaveTextContent(/se canceló/i);
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(
+        screen.queryByRole("button", { name: /confirmar eliminación/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Se canceló la confirmación.",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("announces a dirty-discard timeout expiry and keeps the draft", () => {
+    vi.useFakeTimers();
+    try {
+      seedTwo();
+      render(<PadronView />);
+      fireEvent.click(
+        within(rowByName("Ana Torres")).getByRole("button", { name: /editar/i }),
+      );
+      fireEvent.change(screen.getByLabelText(/^nombre/i), {
+        target: { value: "Cambiado" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^cancelar$/i }));
+      expect(
+        screen.getByRole("button", { name: /descartar cambios/i }),
+      ).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(
+        screen.queryByRole("button", { name: /descartar cambios/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Se canceló la confirmación.",
+      );
+      // Draft survived the whole fuse: nothing discarded, still editing.
+      expect(screen.getByLabelText(/^nombre/i)).toHaveValue("Cambiado");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the notice on re-arm so the next expiry announces again", () => {
+    vi.useFakeTimers();
+    try {
+      seedTwo();
+      render(<PadronView />);
+      const arm = () =>
+        fireEvent.click(
+          within(rowByName("Luis Paz")).getByRole("button", {
+            name: /^eliminar$/i,
+          }),
+        );
+      arm();
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Se canceló la confirmación.",
+      );
+      // Re-arming clears the stale notice…
+      arm();
+      expect(screen.getByRole("status")).not.toHaveTextContent(/se canceló/i);
+      // …so the next timeout announces again instead of changing nothing.
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Se canceló la confirmación.",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stays silent on manual disarms: Cancelar never announces", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Luis Paz");
+    fireEvent.click(within(row).getByRole("button", { name: /^eliminar$/i }));
+    fireEvent.click(within(row).getByRole("button", { name: /cancelar/i }));
+    // User-initiated, so no announcement: nothing expired on them.
+    expect(screen.getByRole("status")).not.toHaveTextContent(/se canceló/i);
   });
 });
 
@@ -1502,6 +1636,16 @@ describe("PadronView bulk scope + print sync state", () => {
     // ISO lives only in padronFilename/CSV machine artifacts, never paper.
     expect(header?.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
+
+  it("prints the Hb average in the shared one-decimal voice", () => {
+    resetSyncGuardForTests();
+    seedTwo();
+    const { container } = render(<PadronView />);
+    const header = container.querySelector(".padron-print-header");
+    // (12.0 + 6.5) / 2 = 9.25 → 9.3: the same formatHb voice as the
+    // dashboard KPI and the CSV stats, so paper never disagrees.
+    expect(header).toHaveTextContent("Promedio Hb: 9.3 g/dL");
+  });
 });
 
 describe("PadronView phone surface (P2-1, Option A)", () => {
@@ -1736,7 +1880,7 @@ describe("PadronView capacity signal (P3)", () => {
     seedMany(80);
     render(<PadronView />);
     const counter = screen.getByTestId("padron-capacity");
-    expect(counter).toHaveTextContent("80 de 100");
+    expect(counter).toHaveTextContent("80 de 100 pacientes");
     expect(counter.className).toMatch(/text-muted-foreground/);
     expect(counter.className).not.toMatch(/destructive|warning/);
   });
@@ -1744,19 +1888,19 @@ describe("PadronView capacity signal (P3)", () => {
   it("counts total registered, never the filtered view", () => {
     seedMany(87);
     render(<PadronView />);
-    expect(screen.getByTestId("padron-capacity")).toHaveTextContent("87 de 100");
+    expect(screen.getByTestId("padron-capacity")).toHaveTextContent("87 de 100 pacientes");
     fireEvent.change(screen.getByLabelText(/buscar/i), {
       target: { value: "Paciente 8" },
     });
     // Visible slice narrows; the capacity signal holds the total.
-    expect(screen.getByTestId("padron-capacity")).toHaveTextContent("87 de 100");
+    expect(screen.getByTestId("padron-capacity")).toHaveTextContent("87 de 100 pacientes");
   });
 
   it("reads 100 de 100 at the cap with no alarm styling", () => {
     seedMany(100);
     render(<PadronView />);
     const counter = screen.getByTestId("padron-capacity");
-    expect(counter).toHaveTextContent("100 de 100");
+    expect(counter).toHaveTextContent("100 de 100 pacientes");
     expect(counter.className).toMatch(/text-muted-foreground/);
     expect(counter.className).not.toMatch(/destructive/);
   });
@@ -1835,7 +1979,7 @@ describe("PadronView edit-save undo (P2-2)", () => {
     expect(screen.getByText("Cambios guardados.")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /deshacer/i })).toHaveLength(3);
     expect(
-      screen.getByText(/se expiró un deshacer anterior/i),
+      screen.getByText(/se descartó el deshacer más antiguo/i),
     ).toBeInTheDocument();
     // Newest group (the edit) undoes first and restores Cuatro's Hb.
     fireEvent.click(screen.getAllByRole("button", { name: /deshacer/i })[0]);

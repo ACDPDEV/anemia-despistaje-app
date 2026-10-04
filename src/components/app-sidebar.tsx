@@ -57,9 +57,10 @@ type AppSidebarProps = {
 // App.tsx onAuthStateChange.
 
 // The 4 jornada steps + shortcuts line, shared verbatim by the expanded
-// <details> and the collapsed popover below: one component so the two
-// branches can never drift apart.
-function HelpSteps() {
+// <details> and the collapsed popover below — plus the RegisterForm
+// contextual entry (same steps at the Registro cutoff hint): one exported
+// component so the branches can never drift apart.
+export function HelpSteps() {
   return (
     <>
       <ol className="mt-1 list-decimal space-y-0.5 pl-4">

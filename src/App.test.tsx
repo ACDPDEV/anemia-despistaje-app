@@ -128,7 +128,8 @@ describe("App sidebar shell", () => {
 
     fireEvent.click(within(nav).getByRole("button", { name: /panel/i }));
     expect(screen.getByTestId("kpi-total")).toHaveTextContent("1");
-    expect(screen.getByText(/12\.00/)).toBeInTheDocument();
+    // One-decimal Hb voice shared with print and CSV (formatHb).
+    expect(screen.getByTestId("kpi-avg")).toHaveTextContent("12.0 g/dL");
   });
 
   it("navigates back to registro from the empty padron call-to-action", () => {
