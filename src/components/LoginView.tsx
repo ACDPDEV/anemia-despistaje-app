@@ -3,18 +3,17 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
-  isAuthConfigured,
   signInWithPassword,
   signUp,
 } from "../lib/auth";
 import { toSpanishErrorMessage } from "../lib/errorMessages";
 
-// Login + sign-up form with Spanish labels. When Supabase credentials are
-// missing the app stays fully offline-first: an offline/local-only notice
-// renders instead of the form, and the shell (App.tsx) bypasses this view
-// entirely. Sign-up with email confirmation enabled replaces the form with
-// a success notice; without confirmation the session arrives via the
-// existing onAuthStateChange machinery in App.tsx.
+// Login + sign-up form with Spanish labels. Sign-up with email confirmation
+// enabled replaces the form with a success notice; without confirmation the
+// session arrives via the existing onAuthStateChange machinery in App.tsx.
+// No unconfigured/offline branch (run-17 P3-2): App.tsx only mounts this
+// view inside `if (authConfigured && !session)`, so isAuthConfigured() is
+// always true here and that branch could never render — deleted, not kept.
 export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -27,15 +26,6 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
-
-  if (!isAuthConfigured()) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        La aplicación funciona sin conexión en este equipo. La sincronización
-        no está configurada.
-      </p>
-    );
-  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();

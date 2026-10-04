@@ -18,13 +18,6 @@ describe("LoginView", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the offline/local-only notice when unconfigured", () => {
-    vi.spyOn(auth, "isAuthConfigured").mockReturnValue(false);
-    render(<LoginView />);
-    expect(screen.queryByLabelText(/correo/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/sin conexión en este equipo/i)).toBeInTheDocument();
-  });
-
   it("shows a role=alert error when sign-in fails", async () => {
     vi.spyOn(auth, "isAuthConfigured").mockReturnValue(true);
     vi.spyOn(auth, "signInWithPassword").mockRejectedValue(

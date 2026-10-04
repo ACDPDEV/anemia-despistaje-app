@@ -162,12 +162,6 @@ export function DashboardView({
   return (
     <section className="flex flex-col gap-6">
       <h2 className="text-lg font-semibold">Panel</h2>
-      <p
-        data-testid="triage-sentence"
-        className="max-w-prose text-2xl font-semibold tracking-tight text-balance sm:text-3xl"
-      >
-        {triageSentence(total, moderateSevere)}
-      </p>
 
       {isEmpty && (
         <p data-testid="empty-guide" className="text-sm text-muted-foreground">
@@ -183,17 +177,28 @@ export function DashboardView({
         </div>
       )}
 
+      {/* One hero unit (no eyebrow: craft-floor bans the kicker, so the
+          triage sentence lives INSIDE this card as the number's body copy).
+          Single ramp: hero number dominant, sentence one tier below it,
+          caption unchanged. First screen stays sentence + hero + 3 KPIs —
+          same content, unified hierarchy. */}
       <Card data-testid="hero-modsev">
         <CardHeader>
           <CardTitle>Moderada + Severa</CardTitle>
           <CardDescription>{captionFor("modsev", isEmpty)}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-1">
           <p
             data-testid="kpi-modsev"
             className="text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl"
           >
             {moderateSevere}
+          </p>
+          <p
+            data-testid="triage-sentence"
+            className="max-w-prose text-base text-muted-foreground text-balance"
+          >
+            {triageSentence(total, moderateSevere)}
           </p>
         </CardContent>
       </Card>
@@ -300,17 +305,10 @@ export function DashboardView({
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <div
-                data-testid="hb-legend"
-                aria-label="Leyenda de severidad"
-                className="mt-2 flex flex-wrap gap-1.5"
-              >
-                {BANDS.map((band) => (
-                  <Badge key={band} variant={DIAGNOSIS_BADGE[band]}>
-                    {band}
-                  </Badge>
-                ))}
-              </div>
+              {/* Visible legend dropped (distill): the 4 band cards above
+                  already name every band, so chips here only repeated
+                  chart-owned data. The sr-only table below stays the
+                  canonical AT source with full names. */}
               <table data-testid="hb-data-table" className="sr-only">
                 <caption>Distribución de hemoglobina por diagnóstico</caption>
                 <tbody>

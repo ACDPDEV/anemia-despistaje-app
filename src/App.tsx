@@ -18,6 +18,21 @@ import {
   onAuthStateChange,
 } from "./lib/auth";
 
+// Alt+S guard: an armed padron confirm or an open edit row owns the
+// keyboard (PadronView two-tap grammar: Enter confirms, Esc disarms), so
+// the global submit must stand down. DOM-queried because the padron state
+// lives in the unmounted sibling tab, not in this shell.
+// - aria-label^="Confirmar eliminación": armed row/bulk delete confirms.
+// - input[id^="nombre-"]: open edit rows (row-scoped ids; the register
+//   form's own input id is exactly "nombre", so it never self-matches).
+// - "Descartar cambios?": armed dirty-discard confirm.
+function isPadronGuardArmed(doc: Document): boolean {
+  if (doc.querySelector('[aria-label^="Confirmar eliminación"]')) return true;
+  if (doc.querySelector('input[id^="nombre-"]')) return true;
+  return [...doc.querySelectorAll("button")].some(
+    (button) => button.textContent === "Descartar cambios?",
+  );
+}
 // Shell wiring the three views through the sidebar.
 // Spanish labels, English identifiers. TabId is the single nav source.
 // Auth gating: when Supabase credentials exist, unauthenticated users see
@@ -50,8 +65,11 @@ export default function App() {
     };
   }, [authConfigured]);
 
-  // Keyboard shortcut: Alt+1/Alt+2/Alt+3 switch tabs
-  // (Registro/Padrón/Panel). preventDefault avoids browser menu conflicts.
+  // Keyboard shortcuts: Alt+1/Alt+2/Alt+3 switch tabs
+  // (Registro/Padrón/Panel); Alt+S submits the register form.
+  // preventDefault avoids browser menu conflicts. Alt+S is scoped to the
+  // register tab and stands down while a padron guard is armed (see
+  // isPadronGuardArmed above).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!event.altKey || event.ctrlKey || event.metaKey) return;
@@ -64,16 +82,23 @@ export default function App() {
       } else if (event.key === "3") {
         event.preventDefault();
         setTab("dashboard");
+      } else if (event.key === "s" || event.key === "S") {
+        if (tab !== "register") return;
+        if (isPadronGuardArmed(document)) return;
+        event.preventDefault();
+        (
+          document.getElementById("register-form") as HTMLFormElement | null
+        )?.requestSubmit();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [tab]);
 
   if (authConfigured && session === undefined) {
     return (
       <main className="mx-auto w-full max-w-5xl p-6">
-        <p className="text-sm text-muted-foreground">Cargando…</p>
+        <p role="status" className="text-sm text-muted-foreground">Cargando…</p>
       </main>
     );
   }

@@ -59,6 +59,28 @@ beforeEach(() => {
   mockedAuth.isAuthConfigured.mockReturnValue(true);
 });
 
+describe("AppSidebar nav shortcuts", () => {
+  it("exposes Alt+1/2/3 on the nav buttons even when collapsed", () => {
+    render(
+      <SidebarProvider>
+        <AppSidebar active="register" onNavigate={vi.fn()} />
+      </SidebarProvider>,
+    );
+
+    const expectations: Array<[RegExp, string]> = [
+      [/registro/i, "Alt+1"],
+      [/padrón/i, "Alt+2"],
+      [/panel/i, "Alt+3"],
+    ];
+    for (const [name, keys] of expectations) {
+      const button = screen.getByRole("button", { name });
+      expect(button).toHaveAttribute("aria-keyshortcuts", keys);
+      // Native title carries the shortcut where the shortcuts line hides.
+      expect(button.getAttribute("title")).toContain(keys);
+    }
+  });
+});
+
 describe("AppSidebar sign-out tooltip workaround", () => {
   it("keeps the tooltip while idle, drops it while pending, restores it after", async () => {
     mockedAuth.signOut.mockResolvedValue(undefined);

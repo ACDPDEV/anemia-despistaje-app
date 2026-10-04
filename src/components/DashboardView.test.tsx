@@ -49,7 +49,7 @@ describe("DashboardView", () => {
     for (const tick of ["Normal", "Leve", "Moderada", "Severa"]) {
       expect(within(chart).getByText(tick)).toBeInTheDocument();
     }
-    // Full diagnosis names live in the legend + sr-only table, not ticks.
+    // Full diagnosis names live in the sr-only table, not ticks.
     expect(within(chart).queryByText("Anemia Leve")).not.toBeInTheDocument();
     expect(within(chart).queryByText("Anemia Moderada")).not.toBeInTheDocument();
     expect(within(chart).queryByText("Anemia Severa")).not.toBeInTheDocument();
@@ -91,15 +91,18 @@ describe("DashboardView", () => {
     expect(within(chart).getByText("2")).toBeInTheDocument();
   });
 
-  it("keeps the Hb legend as 4 diagnosis chips (bars ARE diagnoses)", () => {
+  it("drops the visible Hb legend: band cards above already name every band", () => {
     seedPadron();
     render(<DashboardView />);
 
-    const legend = screen.getByTestId("hb-legend");
+    // No visible legend chips: they duplicated the band cards above.
+    expect(screen.queryByTestId("hb-legend")).not.toBeInTheDocument();
+    // AT still gets the full names from the sr-only table.
+    const table = screen.getByTestId("hb-data-table");
+    expect(table).toHaveClass("sr-only");
     for (const band of HB_BANDS) {
-      expect(within(legend).getByText(band)).toBeInTheDocument();
+      expect(within(table).getByText(band)).toBeInTheDocument();
     }
-    expect(legend.className).toMatch(/flex-wrap/);
   });
 
   it("keys the age chart by worst case instead of diagnosis chips", () => {
@@ -116,7 +119,7 @@ describe("DashboardView", () => {
     }
   });
 
-  it("promotes Moderada + Severa to a hero above the secondary KPIs", () => {
+  it("unifies the triage sentence and hero number into one hero unit", () => {
     seedPadron();
     render(<DashboardView />);
 
@@ -125,16 +128,21 @@ describe("DashboardView", () => {
     expect(heroValue).toHaveTextContent("2");
     // Hero value reads a full tier above the secondary numbers.
     expect(heroValue.className).toMatch(/text-4xl/);
+    // One unit, one ramp: the sentence lives INSIDE the hero card as its
+    // body copy, a tier below the hero number (no competing 2xl/3xl line).
+    const triage = within(hero).getByTestId("triage-sentence");
+    expect(triage).toHaveTextContent(
+      "2 moderados o severos de 5 registrados necesitan seguimiento",
+    );
+    expect(triage.tagName).toBe("P");
+    expect(triage.className).toMatch(/text-base/);
+    expect(triage.className).not.toMatch(/text-2xl/);
     for (const id of ["kpi-total", "kpi-avg", "kpi-anemia-pct"]) {
       const secondary = screen.getByTestId(id);
       expect(secondary.className).toMatch(/text-xl/);
       expect(secondary.className).not.toMatch(/text-2xl/);
     }
-    // Reading order: sentence → hero → secondary numbers.
-    const triage = screen.getByTestId("triage-sentence");
-    expect(
-      triage.compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // Reading order: hero unit (number + sentence) → secondary numbers.
     expect(
       hero.compareDocumentPosition(screen.getByTestId("kpi-total")) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -240,7 +248,7 @@ describe("DashboardView", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("leads with a triage sentence ahead of the KPI cards", () => {
+  it("keeps the triage sentence in the hero unit ahead of the KPI cards", () => {
     seedPadron();
     render(<DashboardView />);
     const triage = screen.getByTestId("triage-sentence");
@@ -248,10 +256,13 @@ describe("DashboardView", () => {
     expect(triage).toHaveTextContent(
       "2 moderados o severos de 5 registrados necesitan seguimiento",
     );
-    // Protagonist type sits one step above the KPI values.
+    // Body copy inside the hero card, not a competing headline.
     expect(triage.tagName).toBe("P");
-    expect(triage.className).toMatch(/text-2xl/);
-    // The sentence renders before every KPI card in DOM order.
+    expect(triage.className).toMatch(/text-base/);
+    expect(
+      within(screen.getByTestId("hero-modsev")).getByTestId("triage-sentence"),
+    ).toBe(triage);
+    // The hero unit renders before every secondary KPI card in DOM order.
     const firstKpi = screen.getByTestId("kpi-total");
     expect(
       triage.compareDocumentPosition(firstKpi) &

@@ -42,6 +42,15 @@ beforeEach(() => {
 });
 
 describe("App auth gating", () => {
+  it("announces the auth-gate loading state as a polite status", () => {
+    mockedAuth.isAuthConfigured.mockReturnValue(true);
+    mockedAuth.getSession.mockReturnValue(new Promise<null>(() => {}));
+    render(<App />);
+    // role=status carries an implicit aria-live=polite: AT voices the
+    // gate instead of meeting silence.
+    expect(screen.getByRole("status")).toHaveTextContent(/cargando/i);
+  });
+
   it("renders the shell directly when auth is not configured", () => {
     mockedAuth.isAuthConfigured.mockReturnValue(false);
     render(<App />);

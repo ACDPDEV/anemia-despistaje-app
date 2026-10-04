@@ -134,6 +134,26 @@ describe("RegisterForm", () => {
     expect(confirmation.innerHTML).not.toMatch(/green-700/);
   });
 
+  it("names the patient in the success receipt on a single line", () => {
+    render(<RegisterForm />);
+    fillAndSubmit("Ana Torres", "24", "12.0");
+
+    const confirmation = screen.getByRole("status");
+    expect(confirmation).toHaveTextContent(
+      "Paciente registrado: Ana Torres — Normal",
+    );
+    // ONE line on phones: long names truncate instead of wrapping.
+    const receipt = confirmation.querySelector(".text-success")!;
+    expect(receipt.className).toMatch(/truncate/);
+  });
+
+  it("exposes the Alt+S shortcut on the submit button", () => {
+    render(<RegisterForm />);
+    expect(
+      screen.getByRole("button", { name: /^registrar paciente$/i }),
+    ).toHaveAttribute("aria-keyshortcuts", "Alt+S");
+  });
+
   it("announces the duplicate warning as a non-interrupting status", () => {
     usePadronStore
       .getState()

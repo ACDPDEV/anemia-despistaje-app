@@ -250,6 +250,91 @@ describe("App sidebar shell", () => {
     expect(screen.getByLabelText(/nombre/i)).toBeInTheDocument();
   });
 
+  it("submits the register form with Alt+S on the register tab", () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText(/nombre/i), {
+      target: { value: "Ana Torres" },
+    });
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "24" },
+    });
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: "12.0" },
+    });
+
+    fireEvent.keyDown(window, { key: "s", altKey: true });
+
+    expect(usePadronStore.getState().pacientes).toHaveLength(1);
+    expect(screen.getByText(/paciente registrado/i)).toBeInTheDocument();
+  });
+
+  it("ignores Alt+S off the register tab", () => {
+    render(<App />);
+    const nav = screen.getByRole("navigation");
+    fireEvent.click(within(nav).getByRole("button", { name: /panel/i }));
+    expect(screen.getByTestId("kpi-total")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "s", altKey: true });
+
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
+  });
+
+  it("ignores Alt+S while any padron guard owns the keyboard", () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText(/nombre/i), {
+      target: { value: "Ana Torres" },
+    });
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "24" },
+    });
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: "12.0" },
+    });
+
+    // One planted node per guard signal the shell stands down for: armed
+    // delete confirm, open edit row, armed dirty-discard confirm.
+    const guards: HTMLElement[] = [];
+    const confirm = document.createElement("button");
+    confirm.setAttribute("aria-label", "Confirmar eliminación de Prueba");
+    confirm.textContent = "Confirmar";
+    guards.push(confirm);
+    const editInput = document.createElement("input");
+    editInput.id = "nombre-abc123";
+    guards.push(editInput);
+    const discard = document.createElement("button");
+    discard.textContent = "Descartar cambios?";
+    guards.push(discard);
+
+    try {
+      for (const guard of guards) {
+        document.body.appendChild(guard);
+        fireEvent.keyDown(window, { key: "s", altKey: true });
+        expect(usePadronStore.getState().pacientes).toHaveLength(0);
+        guard.remove();
+      }
+    } finally {
+      for (const guard of guards) guard.remove();
+    }
+
+    // Guards gone: the same shortcut submits.
+    fireEvent.keyDown(window, { key: "s", altKey: true });
+    expect(usePadronStore.getState().pacientes).toHaveLength(1);
+  });
+
+  it("exposes Alt+1/2/3 on the nav buttons via aria-keyshortcuts", () => {
+    render(<App />);
+    const nav = screen.getByRole("navigation");
+    expect(
+      within(nav).getByRole("button", { name: /registro/i }),
+    ).toHaveAttribute("aria-keyshortcuts", "Alt+1");
+    expect(
+      within(nav).getByRole("button", { name: /padrón/i }),
+    ).toHaveAttribute("aria-keyshortcuts", "Alt+2");
+    expect(
+      within(nav).getByRole("button", { name: /panel/i }),
+    ).toHaveAttribute("aria-keyshortcuts", "Alt+3");
+  });
+
   it("names the keyboard tab shortcuts once for discoverability", () => {
     render(<App />);
     expect(screen.getByText(/alt\+1 registro/i)).toBeInTheDocument();

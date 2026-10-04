@@ -27,7 +27,10 @@ export function RegisterForm() {
   const [edadError, setEdadError] = useState<string | null>(null);
   const [hbError, setHbError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [lastDiagnosis, setLastDiagnosis] = useState<Diagnosis | null>(null);
+  const [lastRegistered, setLastRegistered] = useState<{
+    nombre: string;
+    diagnostico: Diagnosis;
+  } | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   // Capture-loop shortcut: after a successful register, focus returns to
   // Nombre so the next patient needs no extra click. Deferred with
@@ -36,7 +39,7 @@ export function RegisterForm() {
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setLastDiagnosis(null);
+    setLastRegistered(null);
     setDuplicateWarning(null);
     setFormError(null);
 
@@ -78,14 +81,22 @@ export function RegisterForm() {
     setEdadError(null);
     setHbError(null);
     setFormError(null);
-    setLastDiagnosis(usePadronStore.getState().pacientes.at(-1)?.diagnostico ?? null);
+    // Capture the nombre BEFORE the draft is consumed: the receipt names
+    // the patient (privacy is consistent — the padrón table already shows
+    // names, and this is the nurse's own local data).
+    const registeredNombre = nombre.trim();
+    setLastRegistered({
+      nombre: registeredNombre,
+      diagnostico:
+        usePadronStore.getState().pacientes.at(-1)?.diagnostico ?? "Normal",
+    });
     // The draft is consumed: a registered patient must never replay.
     clearDraft();
     window.setTimeout(() => nombreRef.current?.focus(), 0);
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form id="register-form" onSubmit={handleSubmit}>
       <FieldGroup>
         <Field data-invalid={nombreError ? true : undefined}>
           <FieldLabel htmlFor="nombre">Nombre del paciente</FieldLabel>
@@ -151,14 +162,15 @@ export function RegisterForm() {
           sibling role=status regions racing each other. One region with
           both messages in DOM order (success first) serializes the
           announcement; the Descartar button stays outside the live region. */}
-      {(lastDiagnosis || duplicateWarning) && (
+      {(lastRegistered || duplicateWarning) && (
         <p role="status" className="text-sm">
-          {lastDiagnosis && (
-            <span className="text-success">
-              Paciente registrado: <strong>{lastDiagnosis}</strong>
+          {lastRegistered && (
+            <span className="block truncate text-success">
+              Paciente registrado: {lastRegistered.nombre} —{" "}
+              <strong>{lastRegistered.diagnostico}</strong>
             </span>
           )}
-          {lastDiagnosis && duplicateWarning && " "}
+          {lastRegistered && duplicateWarning && " "}
           {duplicateWarning && (
             <span className="text-warning">{duplicateWarning}</span>
           )}
@@ -176,7 +188,13 @@ export function RegisterForm() {
           </Button>
         </div>
       )}
-      <Button type="submit">Registrar paciente</Button>
+      <Button
+        type="submit"
+        aria-keyshortcuts="Alt+S"
+        title="Registrar paciente (Alt+S)"
+      >
+        Registrar paciente
+      </Button>
       </FieldGroup>
     </form>
   );

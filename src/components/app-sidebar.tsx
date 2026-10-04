@@ -44,7 +44,9 @@ type AppSidebarProps = {
 // status chip, one visible line naming the Alt+1/2/3 tab shortcuts (the
 // only shortcut source of truth, hidden when collapsed to icon width),
 // plus logout when auth is configured (offline-first local mode shows no
-// logout). Sign-out failure stays inline with a retry; success clears via
+// logout). The shortcuts line hides when collapsed to icon width, so each
+// nav button also carries aria-keyshortcuts plus a native title with its
+// shortcut: collapsed icon buttons keep exposing Alt+1/2/3. Sign-out failure stays inline with a retry; success clears via
 // App.tsx onAuthStateChange.
 export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
   const { setOpenMobile, state } = useSidebar();
@@ -91,11 +93,13 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
           <SidebarGroupContent>
             <nav aria-label="Principal">
             <SidebarMenu>
-              {NAV_ITEMS.map((item) => (
+              {NAV_ITEMS.map((item, index) => (
                 <SidebarMenuItem key={item.id}>
                   <SidebarMenuButton
                     isActive={active === item.id}
                     aria-current={active === item.id ? "page" : undefined}
+                    aria-keyshortcuts={`Alt+${index + 1}`}
+                    title={`${item.label} (Alt+${index + 1})`}
                     tooltip={item.label}
                     onClick={() => handleNavigate(item.id)}
                   >
