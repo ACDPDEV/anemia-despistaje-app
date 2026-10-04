@@ -154,6 +154,32 @@ describe("SyncStatusChip", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the receipt silent: one live region, no ticking announcements", () => {
+    render(<SyncStatusChip />);
+    const chip = screen.getByTestId("sync-status-chip");
+    // The pending-count line stays the chip's single announcer…
+    expect(within(chip).getAllByRole("status")).toHaveLength(1);
+    // …and the receipt (which re-renders on a 5s/30s tick) carries no
+    // live role, so fresh syncs never announce "hace 5s… hace 10s…".
+    const receipt = screen.getByTestId("sync-receipt");
+    expect(receipt).not.toHaveAttribute("role");
+    expect(receipt).not.toHaveAttribute("aria-live");
+    expect(receipt).toHaveTextContent("Sin sincronizar aún");
+  });
+
+  it("names the collapsed chip with the composed Spanish title", () => {
+    render(<SyncStatusChip collapsed />);
+    const chip = screen.getByTestId("sync-status-chip");
+    const title = chip.getAttribute("title")!;
+    expect(title).toBe(
+      "Guardado en este equipo · sin sincronizar · Sin sincronizar aún",
+    );
+    expect(within(chip).getByRole("status")).toHaveAttribute(
+      "aria-label",
+      title,
+    );
+  });
+
   it("mirrors the full status text in the title for the collapsed sidebar", () => {
     const { rerender } = render(<SyncStatusChip />);
     expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
@@ -180,9 +206,15 @@ describe("SyncStatusChip", () => {
     expect(screen.getByTestId("sync-pending-badge")).toHaveTextContent("1");
     // Full text lines stay out of the clipped icon-width footer.
     expect(screen.queryByTestId("sync-receipt")).not.toBeInTheDocument();
+    // The collapsed icon carries the FULL composition (status + receipt)
+    // as its accessible name, mirroring the title tooltip.
     expect(within(chip).getByRole("status")).toHaveAttribute(
       "aria-label",
-      "1 por sincronizar",
+      "1 por sincronizar · Sin sincronizar aún",
+    );
+    expect(within(chip).getByRole("status")).toHaveAttribute(
+      "aria-label",
+      chip.getAttribute("title"),
     );
   });
 

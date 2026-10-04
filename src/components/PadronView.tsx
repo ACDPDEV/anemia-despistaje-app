@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import {
   bySeverity,
   findPossibleDuplicates,
+  getDuplicateWarning,
   MAX_NOMBRE,
+  MAX_PADRON,
   usePadronStore,
   type Paciente,
 } from "../stores/padronStore";
@@ -29,6 +31,10 @@ import { useSlidingExpiry } from "../hooks/useSlidingExpiry";
 import { XIcon } from "lucide-react";
 
 const COLUMN_COUNT = 6;
+// Quiet capacity signal: the total-registered counter appears once the
+// padrón reaches ~80 of the 100-record cap. Total over the full store
+// (never the search-filtered visible slice).
+const CAPACITY_HINT_MIN = 80;
 
 // Undo toast visibility window after a confirmed delete.
 const UNDO_TIMEOUT_MS = 8000;
@@ -533,6 +539,17 @@ export function PadronView({
           </Button>
         </div>
       </div>
+      {/* Quiet capacity signal (P3): total registered over the full store,
+          never the filtered view. Muted microcopy under the title — no
+          alarm styling at any count, including 100 de 100. */}
+      {pacientes.length >= CAPACITY_HINT_MIN && (
+        <p
+          data-testid="padron-capacity"
+          className="text-xs text-muted-foreground"
+        >
+          {pacientes.length} de {MAX_PADRON}
+        </p>
+      )}
       <div className="padron-print-header hidden print:block">
         <p className="text-lg font-semibold">
           Padrón de pacientes — {todayStamp}
@@ -670,11 +687,31 @@ export function PadronView({
           )}
         </div>
       )}
+      {/* Mobile select-all (P2-1): the thead (with the header checkbox)
+          hides below sm where each row is a stacked card, so the same
+          selected ∩ visible scope needs its own phone control. Same state,
+          same toggle, same mixed-state grammar as the header checkbox;
+          screen-only (print keeps the table header). */}
+      <div className="flex items-center gap-2 sm:hidden print:hidden">
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium pointer-coarse:min-h-11">
+          <Checkbox
+            checked={allVisibleSelected}
+            ref={(node) => {
+              if (node) {
+                node.indeterminate =
+                  someVisibleSelected && !allVisibleSelected;
+              }
+            }}
+            onChange={toggleAllVisible}
+          />
+          Seleccionar pacientes visibles
+        </label>
+      </div>
       <Table className="padron-table">
         <TableCaption className="sr-only">
           Padrón de pacientes — {visible.length} en vista
         </TableCaption>
-        <TableHeader>
+        <TableHeader className="padron-thead">
           <TableRow>
             <TableHead>
               <label className="flex cursor-pointer items-center gap-2 pointer-coarse:min-h-11">
@@ -789,16 +826,28 @@ function PadronRow({
 
   return (
     <TableRow>
-      <TableCell>
+      <TableCell className="padron-cell-select">
         <label className="flex cursor-pointer items-center gap-2 pointer-coarse:min-h-11">
           <Checkbox checked={selected} onChange={onToggle} />
           <span className="sr-only">Seleccionar a {paciente.nombre}</span>
         </label>
       </TableCell>
-      <TableCell className="font-medium">{paciente.nombre}</TableCell>
-      <TableCell>{paciente.edadMeses}</TableCell>
-      <TableCell>{paciente.nivelHemoglobina}</TableCell>
-      <TableCell>
+      <TableCell className="padron-cell-nombre font-medium">
+        {paciente.nombre}
+      </TableCell>
+      <TableCell className="padron-cell-edad">
+        <span className="font-medium sm:hidden print:hidden">
+          Edad (meses):{" "}
+        </span>
+        {paciente.edadMeses}
+      </TableCell>
+      <TableCell className="padron-cell-hb">
+        <span className="font-medium sm:hidden print:hidden">
+          Hemoglobina (g/dL):{" "}
+        </span>
+        {paciente.nivelHemoglobina}
+      </TableCell>
+      <TableCell className="padron-cell-dx">
         <div className="flex flex-wrap gap-1">
           <Badge variant={DIAGNOSIS_BADGE[paciente.diagnostico]}>
             {paciente.diagnostico}
@@ -901,6 +950,13 @@ function PadronEditRow({
   const [nombreError, setNombreError] = useState<string | null>(null);
   const [edadError, setEdadError] = useState<string | null>(null);
   const [hbError, setHbError] = useState<string | null>(null);
+  // Warning-only duplicate signal (P2-3 parity with RegisterForm): same
+  // shared helper, same copy. Never blocks: the first Guardar with a
+  // duplicate match shows the warning and defers the commit; Descartar
+  // acknowledges the current nombre so the next Guardar commits. The
+  // dirty-guard flow is untouched — the row stays open either way.
+  const [dupWarning, setDupWarning] = useState<string | null>(null);
+  const [dupAckFor, setDupAckFor] = useState<string | null>(null);
   // Dirty-edit guard (harden): any field off its initial value. Clean
   // cancel/Esc/row-switch/filter gestures discard silently (today's
   // behavior); dirty ones arm the in-row two-tap confirm below — no modal.
@@ -1017,10 +1073,20 @@ function PadronEditRow({
     setEdadError(nextEdadError);
     setHbError(nextHbError);
     if (nextNombreError || nextEdadError || nextHbError) return;
-    update(paciente.id, { nombre: nombre.trim(), edadMeses, nivelHemoglobina });
+    // Duplicate check AFTER validation (create-form order): warn inline
+    // before the commit, never block. Self excluded so an untouched
+    // nombre never warns against its own row.
+    const trimmedNombre = nombre.trim();
+    const duplicateMessage = getDuplicateWarning(trimmedNombre, paciente.id);
+    if (duplicateMessage && dupAckFor !== trimmedNombre) {
+      setDupWarning(duplicateMessage);
+      return;
+    }
+    update(paciente.id, { nombre: trimmedNombre, edadMeses, nivelHemoglobina });
     setNombreError(null);
     setEdadError(null);
     setHbError(null);
+    setDupWarning(null);
     onDone();
   }
 
@@ -1062,6 +1128,8 @@ function PadronEditRow({
               onChange={(e) => {
                 setNombre(e.target.value);
                 if (nombreError) setNombreError(null);
+                // A renamed draft needs a fresh duplicate verdict on save.
+                if (dupWarning) setDupWarning(null);
               }}
               aria-invalid={nombreError ? true : undefined}
               aria-describedby={nombreError ? nombreErrorId : undefined}
@@ -1112,6 +1180,31 @@ function PadronEditRow({
             </FieldDescription>
             {hbError && <FieldError id={hbErrorId}>{hbError}</FieldError>}
           </Field>
+          {/* Duplicate warning (create-form parity): single polite status,
+              Descartar outside the live region. Acknowledging records the
+              current nombre so the next Guardar commits; renaming the
+              draft re-arms the check. */}
+          {dupWarning && (
+            <p role="status" className="text-sm text-warning">
+              {dupWarning}
+            </p>
+          )}
+          {dupWarning && (
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="pointer-coarse:min-h-11"
+                onClick={() => {
+                  setDupAckFor(nombre.trim());
+                  setDupWarning(null);
+                }}
+              >
+                Descartar
+              </Button>
+            </div>
+          )}
           <div
             className="flex gap-2"
             onBlur={(e) => {

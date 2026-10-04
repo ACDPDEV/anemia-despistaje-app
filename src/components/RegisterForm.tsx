@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { findPossibleDuplicates, MAX_NOMBRE, usePadronStore } from "../stores/padronStore";
+import { getDuplicateWarning, MAX_NOMBRE, usePadronStore } from "../stores/padronStore";
 import { HB_CUTOFF_LABEL, type Diagnosis } from "../domain/anemia";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -55,16 +55,9 @@ export function RegisterForm() {
     if (nextNombreError || nextEdadError || nextHbError) return;
 
     // Warning-only duplicate signal: computed after validation, never blocks add.
-    const matches = findPossibleDuplicates(nombre);
-    if (matches.length === 1) {
-      setDuplicateWarning(
-        `Posible duplicado: ya existe un paciente llamado ${matches[0].nombre}.`,
-      );
-    } else if (matches.length > 1) {
-      setDuplicateWarning(
-        `Posible duplicado: ya existen ${matches.length} pacientes con ese nombre. Revisa el padrón antes de registrar.`,
-      );
-    }
+    // Shared helper with the edit row so both surfaces quote identical copy.
+    const duplicateMessage = getDuplicateWarning(nombre);
+    if (duplicateMessage) setDuplicateWarning(duplicateMessage);
 
     try {
       add({ nombre: nombre.trim(), edadMeses, nivelHemoglobina });

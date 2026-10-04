@@ -163,3 +163,44 @@
     display: block !important;
   }
 }
+
+/* Phone padrón surface (P2-1, Option A): below sm each table row reflows
+   into a compact stacked card — Nombre leads, edad/Hb carry their own
+   inline labels, diagnóstico badges and row actions stay visible, and no
+   horizontal scroll is needed. Single DOM, so selection scope, two-tap
+   guards, the dirty guard, focus choreography, and live regions behave
+   exactly as on desktop. Scoped to `screen` on purpose: print always
+   renders the plain 6-column table regardless of viewport. */
+@media screen and (max-width: 639.98px) {
+  .padron-table thead.padron-thead {
+    display: none;
+  }
+  .padron-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .padron-table tbody tr {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.375rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    padding: 0.75rem;
+  }
+  .padron-table tbody td {
+    display: block;
+    border: 0;
+    padding: 0;
+    white-space: normal;
+  }
+  .padron-table .padron-cell-nombre {
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+  .padron-table .padron-cell-select label {
+    min-height: 2.75rem;
+  }
+}

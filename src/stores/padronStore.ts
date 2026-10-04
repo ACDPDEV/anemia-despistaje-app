@@ -42,6 +42,31 @@ export function findPossibleDuplicates(nombre: string): Paciente[] {
     .pacientes.filter((p) => !p.deletedAt && normalizeNombre(p.nombre) === target);
 }
 
+// Shared warning copy for the create form and the edit row (P2-3 parity):
+// same sentences, same component path. Warning-only, never blocking.
+// excludeId lets the edit row ignore the row being edited so an untouched
+// nombre never warns against itself.
+export function getDuplicateWarning(
+  nombre: string,
+  excludeId?: string,
+): string | null {
+  const target = normalizeNombre(nombre);
+  if (target.length === 0) return null;
+  const matches = usePadronStore
+    .getState()
+    .pacientes.filter(
+      (p) =>
+        !p.deletedAt &&
+        p.id !== excludeId &&
+        normalizeNombre(p.nombre) === target,
+    );
+  if (matches.length === 0) return null;
+  if (matches.length === 1) {
+    return `Posible duplicado: ya existe un paciente llamado ${matches[0].nombre}.`;
+  }
+  return `Posible duplicado: ya existen ${matches.length} pacientes con ese nombre. Revisa el padrón antes de registrar.`;
+}
+
 export interface Paciente {
   id: string;
   nombre: string;

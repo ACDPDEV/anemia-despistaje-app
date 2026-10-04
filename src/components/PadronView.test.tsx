@@ -19,6 +19,22 @@ function rowByName(name: string): HTMLElement {
   return screen.getByText(name).closest("tr")!;
 }
 
+// Two select-all controls share one accessible name and one scope
+// (selected ∩ visible): the sr-only header checkbox inside the table and
+// the mobile-only line above it (the thead hides below sm). Same handler,
+// so behavior tests pin the header one and parity tests pin the mobile one.
+function selectAllBoxes(): { header: HTMLElement; mobile: HTMLElement } {
+  const table = screen.getByRole("table");
+  const boxes = screen.getAllByRole("checkbox", {
+    name: /pacientes visibles/i,
+  });
+  const header = boxes.find((b) => table.contains(b))!;
+  const mobile = boxes.find((b) => !table.contains(b))!;
+  expect(header).toBeDefined();
+  expect(mobile).toBeDefined();
+  return { header, mobile };
+}
+
 function seedTriage() {
   const { add } = usePadronStore.getState();
   add({ nombre: "Nora Normal", edadMeses: 24, nivelHemoglobina: 12.0 });
@@ -491,9 +507,7 @@ describe("PadronView", () => {
   it("labels every selection checkbox and keeps a coarse-pointer hit area", () => {
     seedTwo();
     render(<PadronView />);
-    const headerToggle = screen.getByRole("checkbox", {
-      name: /seleccionar pacientes visibles/i,
-    });
+    const headerToggle = selectAllBoxes().header;
     expect(headerToggle.tagName).toBe("INPUT");
     expect(headerToggle.closest("label")?.className).toMatch(
       /pointer-coarse:min-h-11/,
@@ -514,7 +528,7 @@ describe("PadronView", () => {
       target: { value: "ana" },
     });
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+      selectAllBoxes().header,
     );
     expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
     expect(
@@ -557,7 +571,7 @@ describe("PadronView", () => {
     render(<PadronView />);
     // Select both rows, then narrow to Ana: the bar counts 1 in vista.
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+      selectAllBoxes().header,
     );
     expect(screen.getByText("2 seleccionados en vista")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/buscar/i), {
@@ -594,7 +608,7 @@ describe("PadronView", () => {
     });
     // Select-all covers the visible Luis only; Ana's hidden selection stays.
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+      selectAllBoxes().header,
     );
     expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/buscar/i), {
@@ -674,14 +688,12 @@ describe("PadronView", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
     );
-    const header = screen.getByRole("checkbox", {
-      name: /pacientes visibles/i,
-    }) as HTMLInputElement;
+    const header = selectAllBoxes().header as HTMLInputElement;
     expect(header.indeterminate).toBe(true);
     expect(header.checked).toBe(false);
     fireEvent.click(header);
     expect(
-      (screen.getByRole("checkbox", { name: /pacientes visibles/i }) as HTMLInputElement).indeterminate,
+      (selectAllBoxes().header as HTMLInputElement).indeterminate,
     ).toBe(false);
     expect(screen.getByText("2 seleccionados en vista")).toBeInTheDocument();
   });
@@ -690,7 +702,7 @@ describe("PadronView", () => {
     seedTwo();
     render(<PadronView />);
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+      selectAllBoxes().header,
     );
     expect(screen.getByText("2 seleccionados en vista")).toBeInTheDocument();
     // First tap only arms the batch guard: nothing deleted yet.
@@ -1318,7 +1330,7 @@ describe("PadronView export actions", () => {
     const { seen } = mockDownloadSeam();
     render(<PadronView />);
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /pacientes visibles/i }),
+      selectAllBoxes().header,
     );
     fireEvent.change(screen.getByLabelText(/buscar/i), {
       target: { value: "ana" },
@@ -1376,9 +1388,7 @@ describe("PadronView bulk scope + print sync state", () => {
   it("keeps the select-all scope on the visible patients", () => {
     seedTwo();
     render(<PadronView />);
-    expect(
-      screen.getByRole("checkbox", { name: /seleccionar pacientes visibles/i }),
-    ).toBeInTheDocument();
+    expect(selectAllBoxes().header).toBeInTheDocument();
   });
 
   it("prints the pending count with the never-synced receipt", () => {
@@ -1403,5 +1413,263 @@ describe("PadronView bulk scope + print sync state", () => {
       "Sin cambios pendientes de sincronización",
     );
     expect(header).toHaveTextContent("Última sincronización hace 2 min");
+  });
+});
+
+describe("PadronView phone surface (P2-1, Option A)", () => {
+  it("hooks the thead for the below-sm card reflow while the table stays in print", () => {
+    seedTwo();
+    const { container } = render(<PadronView />);
+    // Single DOM: the screen-only CSS stacks rows into cards below sm;
+    // the table itself is never hidden, so print keeps the 6-column table.
+    const thead = container.querySelector("thead.padron-thead");
+    expect(thead).not.toBeNull();
+    expect(container.querySelector("table.padron-table")).not.toBeNull();
+    expect(
+      container.querySelector(".padron-print-header"),
+    ).not.toBeNull();
+  });
+
+  it("labels edad and Hb inline so the stacked card reads without headers", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    const edadLabel = within(row).getByText("Edad (meses):");
+    expect(edadLabel.className).toMatch(/sm:hidden/);
+    expect(edadLabel.className).toMatch(/print:hidden/);
+    const hbLabel = within(row).getByText("Hemoglobina (g/dL):");
+    expect(hbLabel.className).toMatch(/sm:hidden/);
+    expect(hbLabel.className).toMatch(/print:hidden/);
+    // Values stay plain text beside their labels.
+    expect(within(row).getByText("24", { exact: true })).toBeInTheDocument();
+  });
+
+  it("marks data cells with card hooks (nombre leads, Hb inline as text)", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    const cells = within(row).getAllByRole("cell");
+    expect(cells[1].className).toMatch(/padron-cell-nombre/);
+    expect(cells[2].className).toMatch(/padron-cell-edad/);
+    expect(cells[3].className).toMatch(/padron-cell-hb/);
+    expect(cells[4].className).toMatch(/padron-cell-dx/);
+  });
+
+  it("drives the same visible scope from the mobile select-all", () => {
+    seedTwo();
+    render(<PadronView />);
+    const { mobile } = selectAllBoxes();
+    // The phone control lives outside the table and skips print…
+    expect(screen.getByRole("table").contains(mobile)).toBe(false);
+    expect(mobile.closest("div")?.className).toMatch(/sm:hidden/);
+    expect(mobile.closest("div")?.className).toMatch(/print:hidden/);
+    // …but toggles exactly the filtered set, like the header checkbox.
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "ana" },
+    });
+    fireEvent.click(mobile);
+    expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    ).toBeChecked();
+    expect(
+      screen.queryByRole("checkbox", { name: /seleccionar a luis paz/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports the mixed state on the mobile select-all too", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    );
+    expect(
+      (selectAllBoxes().mobile as HTMLInputElement).indeterminate,
+    ).toBe(true);
+  });
+
+  it("keeps row actions and the edit form inside the card rows", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    expect(
+      within(row).getByRole("button", { name: /editar/i }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    // The edit form renders (colspan row becomes a card below sm).
+    expect(screen.getByText("Editando a Ana Torres")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
+  });
+});
+
+describe("PadronView edit-row duplicate parity (P2-3)", () => {
+  function openEditFor(name: string) {
+    fireEvent.click(
+      within(rowByName(name)).getByRole("button", { name: /editar/i }),
+    );
+  }
+
+  it("warns inline before committing a duplicate rename, never blocking", () => {
+    seedTwo();
+    render(<PadronView />);
+    openEditFor("Luis Paz");
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Ana Torres" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    // Same copy as the create form…
+    expect(screen.getByText(/posible duplicado/i)).toHaveTextContent(
+      "Posible duplicado: ya existe un paciente llamado Ana Torres.",
+    );
+    expect(screen.getByText(/posible duplicado/i).className).toMatch(
+      /text-warning/,
+    );
+    // …and nothing committed: the row stays open, the store untouched.
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.nombre === "Luis Paz"),
+    ).toBeDefined();
+  });
+
+  it("commits after the warning is dismissed, then saves silently", () => {
+    seedTwo();
+    render(<PadronView />);
+    openEditFor("Luis Paz");
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Ana Torres" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    expect(screen.getByText(/posible duplicado/i)).toBeInTheDocument();
+    // Descartar acknowledges the current nombre (outside the live region).
+    const warning = screen.getByText(/posible duplicado/i);
+    const liveRegion = warning.closest('[role="status"]')!;
+    expect(liveRegion.querySelector("button")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^descartar$/i }));
+    expect(screen.queryByText(/posible duplicado/i)).not.toBeInTheDocument();
+    // The second Guardar commits.
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    expect(
+      screen.queryByRole("button", { name: /guardar/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.filter((p) => p.nombre === "Ana Torres"),
+    ).toHaveLength(2);
+  });
+
+  it("never warns against its own row when the nombre is untouched", () => {
+    seedTwo();
+    render(<PadronView />);
+    openEditFor("Ana Torres");
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: "8.0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    expect(screen.queryByText(/posible duplicado/i)).not.toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes[0].diagnostico).toBe(
+      "Anemia Moderada",
+    );
+  });
+
+  it("saves a unique rename silently", () => {
+    seedTwo();
+    render(<PadronView />);
+    openEditFor("Luis Paz");
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Luis Paz Nuevo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    expect(screen.queryByText(/posible duplicado/i)).not.toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.nombre === "Luis Paz Nuevo"),
+    ).toBeDefined();
+  });
+
+  it("names the count when several patients share the target name", () => {
+    const { add } = usePadronStore.getState();
+    add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Maria Lopez", edadMeses: 30, nivelHemoglobina: 11.0 });
+    add({ nombre: "Luis Paz", edadMeses: 28, nivelHemoglobina: 12.0 });
+    render(<PadronView />);
+    openEditFor("Luis Paz");
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "maria lopez" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    // Row badges already quote "Posible duplicado": pin the inline edit
+    // warning inside the row form, not the badges.
+    const editForm = screen
+      .getByRole("button", { name: /guardar/i })
+      .closest("form")!;
+    expect(within(editForm).getByText(/posible duplicado/i)).toHaveTextContent(
+      "Posible duplicado: ya existen 2 pacientes con ese nombre. Revisa el padrón antes de registrar.",
+    );
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.nombre === "Luis Paz"),
+    ).toBeDefined();
+  });
+
+  it("keeps validation ahead of the duplicate check", () => {
+    seedTwo();
+    render(<PadronView />);
+    openEditFor("Luis Paz");
+    fireEvent.change(screen.getByLabelText(/^nombre/i), {
+      target: { value: "Ana Torres" },
+    });
+    fireEvent.change(screen.getByLabelText(/edad/i), {
+      target: { value: "5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    // Field error wins; no duplicate warning yet, nothing saved.
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "La edad debe estar entre 6 y 59 meses.",
+    );
+    expect(screen.queryByText(/posible duplicado/i)).not.toBeInTheDocument();
+    expect(
+      usePadronStore.getState().pacientes.find((p) => p.nombre === "Luis Paz"),
+    ).toBeDefined();
+  });
+});
+
+describe("PadronView capacity signal (P3)", () => {
+  function seedMany(count: number) {
+    const { add } = usePadronStore.getState();
+    for (let i = 1; i <= count; i++) {
+      add({ nombre: `Paciente ${i}`, edadMeses: 24, nivelHemoglobina: 12.0 });
+    }
+  }
+
+  it("stays quiet under 80 records", () => {
+    seedMany(79);
+    render(<PadronView />);
+    expect(screen.queryByTestId("padron-capacity")).not.toBeInTheDocument();
+  });
+
+  it("shows the total-registered count from 80 on, muted and calm", () => {
+    seedMany(80);
+    render(<PadronView />);
+    const counter = screen.getByTestId("padron-capacity");
+    expect(counter).toHaveTextContent("80 de 100");
+    expect(counter.className).toMatch(/text-muted-foreground/);
+    expect(counter.className).not.toMatch(/destructive|warning/);
+  });
+
+  it("counts total registered, never the filtered view", () => {
+    seedMany(87);
+    render(<PadronView />);
+    expect(screen.getByTestId("padron-capacity")).toHaveTextContent("87 de 100");
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "Paciente 8" },
+    });
+    // Visible slice narrows; the capacity signal holds the total.
+    expect(screen.getByTestId("padron-capacity")).toHaveTextContent("87 de 100");
+  });
+
+  it("reads 100 de 100 at the cap with no alarm styling", () => {
+    seedMany(100);
+    render(<PadronView />);
+    const counter = screen.getByTestId("padron-capacity");
+    expect(counter).toHaveTextContent("100 de 100");
+    expect(counter.className).toMatch(/text-muted-foreground/);
+    expect(counter.className).not.toMatch(/destructive/);
   });
 });
