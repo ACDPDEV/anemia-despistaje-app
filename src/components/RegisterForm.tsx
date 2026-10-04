@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { findPossibleDuplicates, usePadronStore } from "../stores/padronStore";
 import type { Diagnosis } from "../domain/anemia";
+import { Button } from "@/components/ui/button";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 
 // Registration form with Spanish labels and validation messages.
 // Delegates persistence and diagnosis to the padron store.
@@ -55,45 +58,42 @@ export function RegisterForm() {
     setHb("");
   }
 
+  const invalid = error !== null;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="nombre" className="block text-sm font-medium">
-          Nombre del paciente
-        </label>
-        <input
-          id="nombre"
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-          className="mt-1 w-full rounded border px-3 py-2"
-        />
-      </div>
-      <div>
-        <label htmlFor="edad" className="block text-sm font-medium">
-          Edad (meses)
-        </label>
-        <input
-          id="edad"
-          inputMode="numeric"
-          value={edad}
-          onChange={(e) => setEdad(e.target.value)}
-          className="mt-1 w-full rounded border px-3 py-2"
-        />
-      </div>
-      <div>
-        <label htmlFor="hb" className="block text-sm font-medium">
-          Hemoglobina (g/dL)
-        </label>
-        <input
-          id="hb"
-          inputMode="decimal"
-          value={hb}
-          onChange={(e) => setHb(e.target.value)}
-          className="mt-1 w-full rounded border px-3 py-2"
-        />
-      </div>
+    <form onSubmit={handleSubmit}>
+      <FieldGroup>
+        <Field data-invalid={invalid ? true : undefined}>
+          <FieldLabel htmlFor="nombre">Nombre del paciente</FieldLabel>
+          <Input
+            id="nombre"
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            aria-invalid={invalid ? true : undefined}
+          />
+        </Field>
+        <Field data-invalid={invalid ? true : undefined}>
+          <FieldLabel htmlFor="edad">Edad (meses)</FieldLabel>
+          <Input
+            id="edad"
+            inputMode="numeric"
+            value={edad}
+            onChange={(e) => setEdad(e.target.value)}
+            aria-invalid={invalid ? true : undefined}
+          />
+        </Field>
+        <Field data-invalid={invalid ? true : undefined}>
+          <FieldLabel htmlFor="hb">Hemoglobina (g/dL)</FieldLabel>
+          <Input
+            id="hb"
+            inputMode="decimal"
+            value={hb}
+            onChange={(e) => setHb(e.target.value)}
+            aria-invalid={invalid ? true : undefined}
+          />
+        </Field>
       {error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
@@ -105,18 +105,18 @@ export function RegisterForm() {
       {duplicateWarning && (
         <div className="flex items-center gap-2">
           <p className="text-sm text-amber-700">{duplicateWarning}</p>
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => setDuplicateWarning(null)}
-            className="rounded border px-2 py-1 text-sm"
           >
             Descartar
-          </button>
+          </Button>
         </div>
       )}
-      <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
-        Registrar paciente
-      </button>
+      <Button type="submit">Registrar paciente</Button>
+      </FieldGroup>
     </form>
   );
 }
