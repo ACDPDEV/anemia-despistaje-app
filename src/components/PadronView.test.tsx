@@ -299,6 +299,86 @@ describe("PadronView", () => {
     ).toBeInTheDocument();
   });
 
+  it("builds the nombre filter on the Field system", () => {
+    seedTwo();
+    render(<PadronView />);
+    const input = screen.getByLabelText(/buscar por nombre/i);
+    const field = input.closest("[data-slot='field']");
+    expect(field).not.toBeNull();
+    expect(
+      field!.querySelector("[data-slot='field-label']"),
+    ).not.toBeNull();
+  });
+
+  it("shows Limpiar only with a non-empty filter and clears on click", () => {
+    seedTwo();
+    render(<PadronView />);
+    expect(
+      screen.queryByRole("button", { name: /limpiar/i }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "ana" },
+    });
+    expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /limpiar/i }));
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /limpiar/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears the filter on Escape while the filter input is focused", () => {
+    seedTwo();
+    render(<PadronView />);
+    const input = screen.getByLabelText(/buscar/i);
+    fireEvent.change(input, { target: { value: "ana" } });
+    expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.getByText("Luis Paz")).toBeInTheDocument();
+    expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+  });
+
+  it("cancels the row edit on Escape without saving", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    const nombreInput = screen.getByLabelText(/^nombre/i);
+    fireEvent.change(nombreInput, { target: { value: "Cambiado" } });
+    fireEvent.keyDown(nombreInput, { key: "Escape" });
+    // Edit closed, nothing saved.
+    expect(
+      screen.queryByRole("button", { name: /guardar/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Ana Torres")).toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes[0].nombre).toBe("Ana Torres");
+  });
+
+  it("saves the row edit on form submit (Enter)", () => {
+    seedTwo();
+    render(<PadronView />);
+    const row = rowByName("Ana Torres");
+    fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
+    const hbInput = screen.getByLabelText(/hemoglobina/i);
+    fireEvent.change(hbInput, { target: { value: "8.0" } });
+    // Enter in a single-line input submits the row form.
+    fireEvent.submit(hbInput.closest("form")!);
+    expect(usePadronStore.getState().pacientes[0].diagnostico).toBe(
+      "Anemia Moderada",
+    );
+    expect(
+      within(rowByName("Ana Torres")).getByText("Anemia Moderada"),
+    ).toBeInTheDocument();
+  });
+
+  it("explains the disabled actions in the empty state", () => {
+    render(<PadronView />);
+    expect(
+      screen.getByText(/disponibles con pacientes registrados/i),
+    ).toBeInTheDocument();
+  });
+
   it("matches accented names from an unaccented filter", () => {
     const { add } = usePadronStore.getState();
     add({ nombre: "José", edadMeses: 24, nivelHemoglobina: 12.0 });

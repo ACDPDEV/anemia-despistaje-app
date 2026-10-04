@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
+import { HB_CUTOFF_LABEL } from "../domain/anemia";
 import { captionFor, DashboardView, toHbBandData, triageSentence } from "./DashboardView";
 
 const HB_BANDS = ["Normal", "Anemia Leve", "Anemia Moderada", "Anemia Severa"];
@@ -43,10 +44,15 @@ describe("DashboardView", () => {
     const { container } = render(<DashboardView />);
     const chart = screen.getByTestId("hb-chart");
 
-    // All four diagnosis bands are labeled on the chart
-    for (const band of HB_BANDS) {
-      expect(within(chart).getByText(band)).toBeInTheDocument();
+    // Ticks use the short forms ("Normal", "Leve", "Moderada", "Severa"):
+    // the full "Anemia …" names crowd at fontSize 11 with interval={0}.
+    for (const tick of ["Normal", "Leve", "Moderada", "Severa"]) {
+      expect(within(chart).getByText(tick)).toBeInTheDocument();
     }
+    // Full diagnosis names live in the legend + sr-only table, not ticks.
+    expect(within(chart).queryByText("Anemia Leve")).not.toBeInTheDocument();
+    expect(within(chart).queryByText("Anemia Moderada")).not.toBeInTheDocument();
+    expect(within(chart).queryByText("Anemia Severa")).not.toBeInTheDocument();
     // Bar labels print each band count: Normal 2, others 1
     expect(within(chart).getByText("2")).toBeInTheDocument();
     expect(within(chart).getAllByText("1")).toHaveLength(3);
@@ -135,14 +141,39 @@ describe("DashboardView", () => {
     ).toBeTruthy();
   });
 
-  it("keeps charts mounted inside a mobile disclosure", () => {
+  it("keeps charts collapsed by default behind a desktop-visible toggle", () => {
     seedPadron();
     render(<DashboardView />);
 
-    const disclosure = screen.getByTestId("charts-disclosure");
+    const disclosure = screen.getByTestId(
+      "charts-disclosure",
+    ) as HTMLDetailsElement;
     expect(disclosure.tagName).toBe("DETAILS");
+    // Collapsed by default on ALL widths (no matchMedia force-open).
+    expect(disclosure.open).toBe(false);
+    // The toggle is explicit on every width, not phones-only.
+    const summary = within(disclosure).getByText("Ver gráficos");
+    expect(summary.tagName).toBe("SUMMARY");
+    expect(summary.className).not.toMatch(/sm:hidden/);
+    // Charts stay mounted while collapsed.
     expect(within(disclosure).getByTestId("hb-chart")).toBeInTheDocument();
     expect(within(disclosure).getByTestId("age-chart")).toBeInTheDocument();
+    // The toggle event drives the controlled open state.
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+    expect(
+      (screen.getByTestId("charts-disclosure") as HTMLDetailsElement).open,
+    ).toBe(true);
+  });
+
+  it("teaches the shared Hb cutoffs on the Hb chart card", () => {
+    seedPadron();
+    render(<DashboardView />);
+    const card = screen.getByText("Distribución de hemoglobina").closest(
+      "div[data-slot='card']",
+    )!;
+    // Reuses HB_CUTOFF_LABEL: the chart teaches the cutoffs the forms do.
+    expect(card.textContent).toContain(HB_CUTOFF_LABEL);
   });
 
   it("guides first-timers with an empty-dashboard hint", () => {

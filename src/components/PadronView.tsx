@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   bySeverity,
   findPossibleDuplicates,
@@ -82,6 +82,9 @@ export function PadronView({
         </div>
         <p className="text-sm text-muted-foreground">
           No hay pacientes registrados.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Exportar e imprimir estarán disponibles con pacientes registrados.
         </p>
         {onEmptyRegister ? (
           <div>
@@ -168,21 +171,34 @@ export function PadronView({
         {visible.length}
       </p>
       <div className="padron-filters flex flex-col gap-4">
-        <div>
-          <label
-            htmlFor="padron-filter"
-            className="block text-sm font-medium"
-          >
-            Buscar por nombre
-          </label>
-          <Input
-            id="padron-filter"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Buscar por nombre…"
-            className="mt-1"
-          />
-        </div>
+        <Field>
+          <FieldLabel htmlFor="padron-filter">Buscar por nombre</FieldLabel>
+          <div className="flex items-center gap-2">
+            <Input
+              id="padron-filter"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                // Escape clears the query; ignore IME composition so the
+                // key that confirms composed text never wipes the filter.
+                if (e.key === "Escape" && !e.nativeEvent.isComposing) {
+                  setFilter("");
+                }
+              }}
+              placeholder="Buscar por nombre…"
+            />
+            {filter.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setFilter("")}
+              >
+                Limpiar
+              </Button>
+            )}
+          </div>
+        </Field>
         <label
           htmlFor="graves-primero"
           className="flex cursor-pointer items-center gap-2 text-sm font-medium pointer-coarse:min-h-11"
@@ -404,10 +420,30 @@ function PadronEditRow({
     onDone();
   }
 
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    handleSave();
+  }
+
+  // Esc cancels the edit without saving; ignored during IME composition
+  // so confirming composed text never closes the row. Enter saves through
+  // the native form submit (single-line inputs): no custom Enter handler,
+  // so Shift+Enter behaves exactly like Enter with no quirk to guard.
+  function handleRowKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+      event.stopPropagation();
+      onDone();
+    }
+  }
+
   return (
     <TableRow>
       <TableCell colSpan={COLUMN_COUNT}>
-        <div className="flex flex-col gap-2">
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={handleSubmit}
+          onKeyDown={handleRowKeyDown}
+        >
           <p className="text-sm font-medium">
             Editando a {paciente.nombre}
           </p>
@@ -470,7 +506,7 @@ function PadronEditRow({
             {hbError && <FieldError id={hbErrorId}>{hbError}</FieldError>}
           </Field>
           <div className="flex gap-2">
-            <Button type="button" size="sm" onClick={handleSave}>
+            <Button type="submit" size="sm">
               Guardar
             </Button>
             <Button
@@ -482,7 +518,7 @@ function PadronEditRow({
               Cancelar
             </Button>
           </div>
-        </div>
+        </form>
       </TableCell>
     </TableRow>
   );

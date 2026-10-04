@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Bar,
   BarChart,
@@ -14,6 +14,7 @@ import { Badge } from "./ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { cn } from "../lib/utils";
 import type { Diagnosis } from "../domain/anemia";
+import { HB_CUTOFF_LABEL } from "../domain/anemia";
 import { groupByAgeBand, type AgeBand } from "../lib/ageGroups";
 import { usePadronStore } from "../stores/padronStore";
 
@@ -99,19 +100,15 @@ export function toHbBandData(
   return BANDS.map((band) => ({ band, count: counts[band] }));
 }
 
-// Charts disclosure: collapsed behind a native <details> on phones so the
-// first screen is sentence + hero + numbers; forced open on sm+ via
-// matchMedia (charts stay mounted either way, <details> hides only
-// visually). Unknown viewports (SSR, jsdom) default to open.
-function initialChartsOpen(): boolean {
-  if (
-    typeof window === "undefined" ||
-    typeof window.matchMedia !== "function"
-  ) {
-    return true;
-  }
-  return window.matchMedia("(min-width: 640px)").matches;
-}
+// Short XAxis ticks for the Hb chart: full diagnosis names crowd at
+// fontSize 11 with interval={0}, so ticks show the short form while the
+// legend + sr-only table keep the full names.
+export const HB_TICK_SHORT: Record<Diagnosis, string> = {
+  Normal: "Normal",
+  "Anemia Leve": "Leve",
+  "Anemia Moderada": "Moderada",
+  "Anemia Severa": "Severa",
+};
 
 // Screening overview: KPI cards, Hb distribution bars, and age-group bars.
 // All values derive from visible rows only: tombstones (deletedAt set)
@@ -134,17 +131,11 @@ export function DashboardView() {
   const hbData = toHbBandData(counts);
   const ageCounts = groupByAgeBand(pacientes);
   const ageData = AGE_BANDS.map((band) => ({ band, count: ageCounts[band] }));
-  // Reading order is sentence → hero → numbers → charts: the disclosure
-  // below only re-weights, it removes nothing.
-  const [chartsOpen, setChartsOpen] = useState(initialChartsOpen);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia("(min-width: 640px)");
-    const sync = (event: MediaQueryListEvent) => setChartsOpen(event.matches);
-    query.addEventListener("change", sync);
-    setChartsOpen(query.matches);
-    return () => query.removeEventListener("change", sync);
-  }, []);
+  // Charts disclosure: collapsed by default on ALL widths behind an
+  // explicit toggle so the first screen is sentence + hero + numbers.
+  // Controlled open state survives React re-renders; no matchMedia
+  // override (it stole the user's collapse state on resize).
+  const [chartsOpen, setChartsOpen] = useState(false);
   // Bar hue for each age band follows the worst diagnosis seen in that
   // band, so "Riesgo por grupo de edad" encodes risk instead of reusing a
   // neutral token. Boundary mirrors groupByAgeBand (< 24 → "6-23").
@@ -252,7 +243,7 @@ export function DashboardView() {
         onToggle={(event) => setChartsOpen(event.currentTarget.open)}
         className="flex flex-col gap-6"
       >
-        <summary className="cursor-pointer text-sm font-medium text-primary sm:hidden">
+        <summary className="cursor-pointer text-sm font-medium text-primary">
           Ver gráficos
         </summary>
         <div className="flex flex-col gap-6">
@@ -260,7 +251,7 @@ export function DashboardView() {
         <CardHeader>
           <CardTitle>Distribución de hemoglobina</CardTitle>
           <CardDescription>
-            El color indica la gravedad del diagnóstico
+            El color indica la gravedad del diagnóstico · {HB_CUTOFF_LABEL}
           </CardDescription>
         </CardHeader>
         <CardContent className="min-w-0">
@@ -268,7 +259,14 @@ export function DashboardView() {
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={hbData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="band" tick={{ fontSize: 11 }} interval={0} />
+                <XAxis
+                  dataKey="band"
+                  tick={{ fontSize: 11 }}
+                  interval={0}
+                  tickFormatter={(value: string) =>
+                    HB_TICK_SHORT[value as Diagnosis] ?? value
+                  }
+                />
                 <YAxis hide />
                 <Tooltip />
                 <Bar dataKey="count" isAnimationActive={false}>
@@ -317,7 +315,7 @@ export function DashboardView() {
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={ageData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="band" />
+                <XAxis dataKey="band" tick={{ fontSize: 11 }} interval={0} />
                 <YAxis hide />
                 <Tooltip />
                 <Bar dataKey="count" isAnimationActive={false}>
