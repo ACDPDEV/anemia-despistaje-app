@@ -24,6 +24,10 @@ interface PadronState {
   add: (input: NewPaciente) => void;
   update: (id: string, patch: Partial<NewPaciente>) => void;
   remove: (id: string) => void;
+  // GC for pushed deletes: drops ONLY tombstones already replicated
+  // (deletedAt set AND dirty=false). Dirty tombstones are still queued
+  // for the next push and must survive.
+  purgeSyncedTombstones: () => void;
   countByDiagnosis: () => Record<Diagnosis, number>;
   averageHb: () => number;
   reset: () => void;
@@ -105,6 +109,11 @@ export const usePadronStore = create<PadronState>()(
             const now = new Date().toISOString();
             return { ...p, deletedAt: now, updatedAt: now, dirty: true };
           }),
+        })),
+
+      purgeSyncedTombstones: () =>
+        set((state) => ({
+          pacientes: state.pacientes.filter((p) => !(p.deletedAt && !p.dirty)),
         })),
 
       countByDiagnosis: () => {

@@ -120,4 +120,62 @@ describe("padronStore", () => {
     const raw = localStorage.getItem("padron-storage");
     expect(raw).toContain("Ana Torres");
   });
+
+  describe("purgeSyncedTombstones (GC)", () => {
+    function setupTombstones() {
+      const preexisting = new Set(usePadronStore.getState().pacientes.map((p) => p.id));
+      addPatient({ nombre: "Limpio", nivelHemoglobina: 12.0 });
+      addPatient({ nombre: "Sucio", nivelHemoglobina: 11.0 });
+      const [cleanId, dirtyId] = usePadronStore
+        .getState()
+        .pacientes.map((p) => p.id)
+        .filter((id) => !preexisting.has(id));
+      usePadronStore.getState().remove(cleanId);
+      usePadronStore.getState().remove(dirtyId);
+      // Simulate a successful push of the first delete: clean tombstone.
+      usePadronStore.setState((state) => ({
+        pacientes: state.pacientes.map((p) =>
+          p.id === cleanId ? { ...p, dirty: false } : p,
+        ),
+      }));
+      return { cleanId, dirtyId };
+    }
+
+    it("purges clean tombstones (deletedAt set AND dirty=false)", () => {
+      const { cleanId } = setupTombstones();
+      usePadronStore.getState().purgeSyncedTombstones();
+      const { pacientes } = usePadronStore.getState();
+      expect(pacientes.find((p) => p.id === cleanId)).toBeUndefined();
+    });
+
+    it("keeps dirty tombstones (deletedAt set but still queued for push)", () => {
+      const { dirtyId } = setupTombstones();
+      usePadronStore.getState().purgeSyncedTombstones();
+      const tombstone = usePadronStore.getState().pacientes.find((p) => p.id === dirtyId)!;
+      expect(tombstone.deletedAt).toEqual(expect.any(String));
+      expect(tombstone.dirty).toBe(true);
+    });
+
+    it("leaves visible rows and their selectors untouched", () => {
+      addPatient({ nombre: "Visible", nivelHemoglobina: 12.5 });
+      const visibleId = usePadronStore.getState().pacientes[0].id;
+      setupTombstones();
+      const before = usePadronStore
+        .getState()
+        .pacientes.filter((p) => !p.deletedAt)
+        .map((p) => p.id);
+      usePadronStore.getState().purgeSyncedTombstones();
+      const state = usePadronStore.getState();
+      const visible = state.pacientes.find((p) => p.id === visibleId)!;
+      expect(visible.nombre).toBe("Visible");
+      expect(visible.deletedAt).toBeNull();
+      expect(state.pacientes.filter((p) => !p.deletedAt).map((p) => p.id)).toEqual(before);
+      expect(state.averageHb()).toBeCloseTo(
+        before.reduce(
+          (acc, id) => acc + state.pacientes.find((p) => p.id === id)!.nivelHemoglobina,
+          0,
+        ) / before.length,
+      );
+    });
+  });
 });

@@ -15,6 +15,7 @@ import {
 import {
   OFFLINE_MESSAGE,
   UNCONFIGURED_MESSAGE,
+  SYNC_PAGE_SIZE,
   toRemoteRow,
   fromRemoteRow,
   getDirtyPacientes,
@@ -350,5 +351,106 @@ describe("createSupabaseSyncTable", () => {
     } as unknown as SupabaseClient);
     await expect(failing.fetchAll()).rejects.toThrow("boom");
     await expect(failing.upsert(rows)).rejects.toThrow("boom");
+  });
+
+  it("does not resurrect purged tombstones: remote-only deleted rows stay dropped", () => {
+    const remoteTomb = makeRemote({
+      id: "purged-id",
+      updated_at: "2026-10-04T10:00:00.000Z",
+      deleted_at: "2026-10-04T10:00:00.000Z",
+    });
+    expect(mergePacientes([], [remoteTomb])).toEqual([]);
+  });
+});
+
+describe("createSupabaseSyncTable pagination (U3)", () => {
+  function makePagedRemote(count: number): RemotePacienteRow[] {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `remote-${i}`,
+      nombre: `Paciente ${i}`,
+      edad_meses: 24,
+      nivel_hemoglobina: 11.5,
+      diagnostico: "Normal",
+      updated_at: "2026-10-02T10:00:00.000Z",
+      deleted_at: null,
+    }));
+  }
+
+  // Fake handle mimicking the supabase-js v2 chain: select() returns a
+  // query with .range(from, to) serving inclusive slices of the table.
+  function makePagedClient(rows: RemotePacienteRow[]) {
+    const rangeCalls: Array<[number, number]> = [];
+    const client = {
+      from: (table: string) => {
+        expect(table).toBe("pacientes");
+        return {
+          select: (_cols?: string) => ({
+            range: async (from: number, to: number) => {
+              rangeCalls.push([from, to]);
+              return { data: rows.slice(from, to + 1), error: null };
+            },
+          }),
+          upsert: async () => ({ error: null }),
+        };
+      },
+    };
+    return { client: client as unknown as SupabaseClient, rangeCalls };
+  }
+
+  it("merges 2500 rows across range pages fully via pullRemote", async () => {
+    const rows = makePagedRemote(2500);
+    const paged = makePagedClient(rows);
+    const table = createSupabaseSyncTable(paged.client);
+
+    const result = await pullRemote([], table, true);
+
+    expect(result.ok).toBe(true);
+    expect(result.merged).toHaveLength(2500);
+    expect(result.merged[0].nombre).toBe("Paciente 0");
+    expect(result.merged[2499].nombre).toBe("Paciente 2499");
+    expect(paged.rangeCalls).toEqual([
+      [0, SYNC_PAGE_SIZE - 1],
+      [SYNC_PAGE_SIZE, 2 * SYNC_PAGE_SIZE - 1],
+      [2 * SYNC_PAGE_SIZE, 3 * SYNC_PAGE_SIZE - 1],
+    ]);
+  });
+
+  it("stops at the first short page without an extra request", async () => {
+    const rows = makePagedRemote(SYNC_PAGE_SIZE + 200);
+    const paged = makePagedClient(rows);
+    const table = createSupabaseSyncTable(paged.client);
+
+    await expect(table.fetchAll()).resolves.toHaveLength(SYNC_PAGE_SIZE + 200);
+    // Full first page + short second page: no third request.
+    expect(paged.rangeCalls).toEqual([
+      [0, SYNC_PAGE_SIZE - 1],
+      [SYNC_PAGE_SIZE, 2 * SYNC_PAGE_SIZE - 1],
+    ]);
+  });
+
+  it("fetches a single-page table with a single range call", async () => {
+    const rows = makePagedRemote(3);
+    const paged = makePagedClient(rows);
+    const table = createSupabaseSyncTable(paged.client);
+
+    await expect(table.fetchAll()).resolves.toEqual(rows);
+    expect(paged.rangeCalls).toEqual([[0, SYNC_PAGE_SIZE - 1]]);
+  });
+
+  it("falls back to a single select against handles without range()", async () => {
+    const rows = makePagedRemote(2);
+    let selectCalls = 0;
+    const legacy = {
+      from: () => ({
+        select: async (_cols?: string) => {
+          selectCalls += 1;
+          return { data: rows, error: null };
+        },
+        upsert: async () => ({ error: null }),
+      }),
+    } as unknown as SupabaseClient;
+
+    await expect(createSupabaseSyncTable(legacy).fetchAll()).resolves.toEqual(rows);
+    expect(selectCalls).toBe(1);
   });
 });
