@@ -526,7 +526,11 @@ export function PadronView({
             <div>
               {/* run-30 P3-2 (clarify, cheap): visual copy unchanged; the
                   aria-label disambiguates this empty-state CTA from the
-                  in-form submit for SR users. */}
+                  in-form submit for SR users.
+                  run-31 P3 (clarify): CLOSE — the three visual "Registrar
+                  paciente" copies (Registro submit, this CTA, Panel CTA) never
+                  share a screen (one view mounts at a time) and the phone bar
+                  says the short "Registrar"; do not rename the visible copy. */}
               <Button
                 type="button"
                 onClick={onEmptyRegister}
