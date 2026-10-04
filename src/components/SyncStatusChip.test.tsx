@@ -694,3 +694,35 @@ describe("shared module sync error (run-24 P2-2)", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("single error announcer per viewport (run-25 P3-1)", () => {
+  it("removes the phone-row alert from the desktop tree by construction", async () => {
+    seedDirty();
+    pushMock.mockRejectedValueOnce(new Error("La red falló."));
+    render(
+      <>
+        <SyncStatusChip />
+        <PhoneSyncRow testId="phone" />
+      </>,
+    );
+
+    fireEvent.click(
+      within(screen.getByTestId("sync-status-chip")).getByRole("button", {
+        name: /^sincronizar$/i,
+      }),
+    );
+    const phoneAlert = await within(
+      screen.getByTestId("phone"),
+    ).findByRole("alert");
+
+    // Empirical half of the assessment: jsdom (no layout engine) queries
+    // BOTH alerts, but the phone row carries sm:hidden — display:none at
+    // ≥640px, which removes it from the accessibility tree in real
+    // browsers, so the chip speaks alone on desktop. Phone + Sheet-closed
+    // unmounts the chip (Dialog keepMounted defaults to false), so the
+    // phone row speaks alone there. No behavior change, by this evidence.
+    expect(phoneAlert).toHaveTextContent("La red falló.");
+    expect(screen.getByTestId("phone").className).toMatch(/sm:hidden/);
+    expect(screen.getByTestId("phone").className).toMatch(/print:hidden/);
+  });
+});

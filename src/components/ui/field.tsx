@@ -72,9 +72,13 @@ function Field({
   orientation = "vertical",
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
+  // No role="group" on purpose (clarify): an unnamed group is worse than
+  // no group — screen readers announce "group" with no name and no way to
+  // tell fields apart. Every Field pairs its FieldLabel with its control
+  // through htmlFor/id, so dropping the role loses no association; the
+  // div stays purely visual. (Upstream shadcn ships role="group" here.)
   return (
     <div
-      role="group"
       data-slot="field"
       data-orientation={orientation}
       className={cn(fieldVariants({ orientation }), className)}

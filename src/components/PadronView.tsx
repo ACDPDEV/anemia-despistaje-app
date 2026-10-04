@@ -784,24 +784,28 @@ export function PadronView({
           </div>
         </Field>
         <label
-          htmlFor="moderados-severos-primero"
+          htmlFor="graves-primero"
           className="flex cursor-pointer items-center gap-2 text-sm font-medium pointer-coarse:min-h-11"
         >
           <Checkbox
-            id="moderados-severos-primero"
+            id="graves-primero"
             checked={gravesPrimero}
             onChange={(e) => setGravesPrimero(e.target.checked)}
           />
-          Ver Anemia Moderada y Severa primero
+          Ver los casos más graves primero
         </label>
       </div>
-      {/* Bulk bar: delete + export over selected ∩ visible only. Bulk
-          EDIT is deliberately out of scope: per-row editing preserves
+      {/* Bulk bar: delete + export over selected ∩ visible only. At rest
+          (rows exist, nothing selected) a quiet one-line hint holds the
+          spot so the bar's arrival never shifts the layout by surprise;
+          it yields the moment anything is selected. Hidden when the filter
+          matches nothing — the "Sin resultados" row already explains that
+          state. Bulk EDIT is deliberately out of scope: per-row editing preserves
           row-level dirty/conflict semantics (each edit revalidates and
           stamps its own updatedAt for the push/pull merge); a bulk editor
           would need per-row conflict surfacing first. Revisit if jornada
           volume demands it. */}
-      {selectedVisible.length > 0 && (
+      {selectedVisible.length > 0 ? (
         <div
           className="flex flex-wrap items-center gap-2"
           onBlur={(e) => {
@@ -867,6 +871,15 @@ export function PadronView({
             </>
           )}
         </div>
+      ) : (
+        visible.length > 0 && (
+          <p
+            data-testid="padron-bulk-hint"
+            className="text-xs text-muted-foreground"
+          >
+            Selecciona pacientes para acciones en lote
+          </p>
+        )
       )}
       {/* Mobile select-all (P2-1): the thead (with the header checkbox)
           hides below sm where each row is a stacked card, so the same
@@ -951,6 +964,7 @@ export function PadronView({
                   onToggle={() => toggleOne(p.id)}
                   onEdit={() => handleRequestEdit(p.id)}
                   onDeleted={handleDeleted}
+                  onFilterNombre={(nombre) => requestFilter(nombre)}
                   onFuseExpire={notifyFuseExpired}
                   onFuseClear={clearFuseNotice}
                   editButtonRef={(node) => {
@@ -976,6 +990,7 @@ function PadronRow({
   editButtonRef,
   onFuseExpire,
   onFuseClear,
+  onFilterNombre,
 }: {
   paciente: Paciente;
   selected: boolean;
@@ -986,6 +1001,13 @@ function PadronRow({
   // Silent-fuse cue: timeout expiry announces, arming clears.
   onFuseExpire?: () => void;
   onFuseClear?: () => void;
+  // Duplicate-badge action (clarify): the badge names a risk with a next
+  // step. Tapping it reuses the existing nombre-filter setter, so the nurse
+  // lands on the suspected twins and the "N seleccionados en vista" scope
+  // follows naturally (it derives from the visible slice). While an edit is
+  // open and dirty the tap parks behind the same in-row discard confirm as
+  // any other filter gesture — the draft wins over the shortcut.
+  onFilterNombre: (nombre: string) => void;
 }) {
   const remove = usePadronStore((s) => s.remove);
   const isPossibleDuplicate =
@@ -1056,7 +1078,20 @@ function PadronRow({
             {paciente.diagnostico}
           </Badge>
           {isPossibleDuplicate && (
-            <Badge variant="outline">Posible duplicado</Badge>
+            <Badge
+              variant="outline"
+              render={
+                <button
+                  type="button"
+                  onClick={() => onFilterNombre(paciente.nombre)}
+                  aria-label="Posible duplicado. Filtrar por este nombre para revisar duplicados."
+                  title="Filtrar por este nombre para revisar duplicados"
+                  className="cursor-pointer"
+                />
+              }
+            >
+              Posible duplicado
+            </Badge>
           )}
         </div>
       </TableCell>
@@ -1283,6 +1318,12 @@ function PadronEditRow({
   // Per-field validation mirrors RegisterForm: same clinical copy, each
   // Input pointing at its own error id, invalid flag only on offenders.
   // Edad/Hb hints mirror the create form (same copy, row-scoped ids).
+  // The native type/min/max/step bounds above are preemptive: out-of-range
+  // values never reach this handler (jsdom enforces native validation on
+  // submit-button clicks exactly like real browsers, verified by test).
+  // This submit validation is the backstop for what passes native
+  // (empties, non-numerics), and the store still receives strings
+  // (e.target.value is always a string, even for type=number).
   const nombreErrorId = `nombre-${paciente.id}-error`;
   const edadHintId = `edad-${paciente.id}-hint`;
   const edadErrorId = `edad-${paciente.id}-error`;
@@ -1391,6 +1432,10 @@ function PadronEditRow({
             </FieldLabel>
             <Input
               id={`edad-${paciente.id}`}
+              type="number"
+              min={6}
+              max={59}
+              step={1}
               inputMode="numeric"
               value={edad}
               disabled={confirmingDiscard}
@@ -1411,6 +1456,9 @@ function PadronEditRow({
             </FieldLabel>
             <Input
               id={`hb-${paciente.id}`}
+              type="number"
+              min={0.1}
+              step={0.1}
               inputMode="decimal"
               value={hb}
               disabled={confirmingDiscard}

@@ -43,15 +43,68 @@ describe("RegisterForm", () => {
     fillAndSubmit("   ", "24", "12.0");
     expect(screen.getByRole("alert")).toHaveTextContent(/nombre/i);
 
-    // Edad out of range
-    fillAndSubmit("Luis Paz", "5", "12.0");
+    // Empty Edad/Hb pass the native layer (no required attribute) and
+    // reach the Spanish submit validation with the same clinical copy.
+    fillAndSubmit("Luis Paz", "", "12.0");
     expect(screen.getByRole("alert")).toHaveTextContent(/edad/i);
 
-    // Non-positive hb
-    fillAndSubmit("Luis Paz", "24", "0");
+    fillAndSubmit("Luis Paz", "24", "");
     expect(screen.getByRole("alert")).toHaveTextContent(/hemoglobina/i);
 
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
+  });
+
+  it("blocks out-of-range Edad/Hb natively before submit validation runs", () => {
+    // run-25 P2-2: the native min/max bounds are advisory AND preemptive —
+    // jsdom enforces interactive validation on submit-button clicks exactly
+    // like real browsers (verified: the handler runs 0 times), so an
+    // out-of-range value never reaches the Spanish validation. Pin the
+    // blocked submit: nothing registers, no inline alert renders.
+    render(<RegisterForm />);
+    fireEvent.change(screen.getByLabelText(/nombre/i), {
+      target: { value: "Luis Paz" },
+    });
+    const edad = screen.getByLabelText(/edad/i) as HTMLInputElement;
+    fireEvent.change(edad, { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText(/hemoglobina/i), {
+      target: { value: "12.0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /registrar/i }));
+    expect(edad.validity.rangeUnderflow).toBe(true);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
+
+    // Same preemption on the Hb floor (min 0.1 carries the "> 0" rule).
+    fireEvent.change(edad, { target: { value: "24" } });
+    const hb = screen.getByLabelText(/hemoglobina/i) as HTMLInputElement;
+    fireEvent.change(hb, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: /registrar/i }));
+    expect(hb.validity.rangeUnderflow).toBe(true);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes).toHaveLength(0);
+  });
+
+  it("constrains Edad/Hb early with native bounds, keeping inputMode", () => {
+    render(<RegisterForm />);
+    const edad = screen.getByLabelText(/edad/i);
+    expect(edad).toHaveAttribute("type", "number");
+    expect(edad).toHaveAttribute("min", "6");
+    expect(edad).toHaveAttribute("max", "59");
+    expect(edad).toHaveAttribute("step", "1");
+    expect(edad).toHaveAttribute("inputmode", "numeric");
+    const hb = screen.getByLabelText(/hemoglobina/i);
+    expect(hb).toHaveAttribute("type", "number");
+    expect(hb).toHaveAttribute("min", "0.1");
+    expect(hb).toHaveAttribute("step", "0.1");
+    expect(hb).toHaveAttribute("inputmode", "decimal");
+  });
+
+  it("renders fields with no unnamed group role", () => {
+    // run-25 P3-3b: Field dropped role="group" (an unnamed group is worse
+    // than no group); labels stay explicitly wired through htmlFor/id.
+    const { container } = render(<RegisterForm />);
+    expect(container.querySelectorAll('[role="group"]')).toHaveLength(0);
+    expect(screen.getByLabelText(/edad/i)).toHaveAttribute("id", "edad");
   });
 
   it("hints first-timers with calm one-line field help", () => {
@@ -80,8 +133,11 @@ describe("RegisterForm", () => {
     expect(hb).not.toHaveAttribute("aria-invalid");
     expect(hb).toHaveAttribute("aria-describedby", "hb-hint");
 
-    // Fixing nombre and breaking edad moves the flag, never doubling it.
-    fillAndSubmit("Luis Paz", "5", "12.0");
+    // Fixing nombre and emptying edad moves the flag, never doubling it.
+    // (Empty passes the native layer — no required — so the Spanish
+    // validation still owns this case; out-of-range numbers are blocked
+    // natively before the handler runs, pinned above.)
+    fillAndSubmit("Luis Paz", "", "12.0");
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     const edadDescribedBy = screen
       .getByLabelText(/edad/i)
@@ -306,8 +362,9 @@ describe("RegisterForm draft persistence (P2-1)", () => {
     expect(usePadronStore.getState().pacientes).toHaveLength(0);
     render(<RegisterForm />);
     expect(screen.getByLabelText(/nombre/i)).toHaveValue("Ana Tor");
-    expect(screen.getByLabelText(/edad/i)).toHaveValue("2");
-    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue("11");
+    // type=number inputs report through jest-dom as numbers, never strings.
+    expect(screen.getByLabelText(/edad/i)).toHaveValue(2);
+    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue(11);
   });
 
   it("clears the draft after a successful register so it never replays", () => {
@@ -334,8 +391,8 @@ describe("RegisterForm draft persistence (P2-1)", () => {
     await useRegisterDraftStore.persist.rehydrate();
     render(<RegisterForm />);
     expect(screen.getByLabelText(/nombre/i)).toHaveValue("Ana Torres");
-    expect(screen.getByLabelText(/edad/i)).toHaveValue("24");
-    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue("12.0");
+    expect(screen.getByLabelText(/edad/i)).toHaveValue(24);
+    expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue(12);
   });
 });
 

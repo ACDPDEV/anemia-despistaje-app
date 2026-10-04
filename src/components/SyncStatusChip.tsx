@@ -259,6 +259,24 @@ export function SyncActionButton({
 // unmounts), so at most one phone action shares the DOM with the sidebar
 // chip — the Alt+G shell query always resolves first-in-DOM-order to a
 // working button running the same guarded handler.
+// Single announcer per viewport (run-25 P3-1 assessment, no behavior
+// change on purpose): at most one of the two role=alert lines is ever
+// effectively announced —
+// - desktop (≥sm): this row is display:none via sm:hidden, which removes
+//   it from the accessibility tree in real browsers, so the chip speaks
+//   alone (jsdom has no layout engine and still queries both — the
+//   two-alert test pin below is that artifact plus the shared-string
+//   invariant, not a second announcement);
+// - phone with the Sheet closed: the Sheet portal unmounts (Base UI
+//   Dialog keepMounted defaults to false), so the chip is gone and this
+//   row speaks alone;
+// - phone with the Sheet open: both are mounted, but the Sheet is a modal
+//   dialog holding focus while this row sits inert behind it.
+// Suppressing this row's alert while the Sheet is open would need
+// Sheet-open state plumbed into every view — too invasive for a second
+// announcer that no viewport/AT combination effectively hears. The two
+// alerts agreeing verbatim (pinned below) is the backstop that keeps the
+// co-mounted phone+Sheet-open case honest.
 export function PhoneSyncRow({ testId }: { testId: string }) {
   const sync = useSyncAction();
   if (

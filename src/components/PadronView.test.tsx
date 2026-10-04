@@ -217,12 +217,12 @@ describe("PadronView", () => {
   it("renders the severity-first toggle as a design-system checkbox with label association", () => {
     seedTwo();
     render(<PadronView />);
-    const toggle = screen.getByRole("checkbox", { name: /anemia moderada y severa primero/i });
+    const toggle = screen.getByRole("checkbox", { name: /casos más graves primero/i });
     // Native input restyled with theme tokens, not a raw checkbox.
     expect(toggle).toHaveAttribute("data-slot", "checkbox");
     expect(toggle.tagName).toBe("INPUT");
     // Label association survives the swap.
-    expect(screen.getByLabelText(/anemia moderada y severa primero/i)).toBe(toggle);
+    expect(screen.getByLabelText(/casos más graves primero/i)).toBe(toggle);
     // 44px touch hit area comes from the label row on coarse pointers.
     expect(toggle.closest("label")?.className).toMatch(/pointer-coarse:min-h-11/);
   });
@@ -259,14 +259,14 @@ describe("PadronView", () => {
   it("lists patients in registration order while severity-first is off", () => {
     seedTriage();
     render(<PadronView />);
-    expect(screen.getByRole("checkbox", { name: /anemia moderada y severa primero/i })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /casos más graves primero/i })).not.toBeChecked();
     expect(visibleNames()).toEqual(["Nora Normal", "Severo Soto", "Leve Lara"]);
   });
 
   it("sorts Severa first when severity-first is on and restores order when off", () => {
     seedTriage();
     render(<PadronView />);
-    const toggle = screen.getByRole("checkbox", { name: /anemia moderada y severa primero/i });
+    const toggle = screen.getByRole("checkbox", { name: /casos más graves primero/i });
     fireEvent.click(toggle);
     expect(visibleNames()).toEqual(["Severo Soto", "Leve Lara", "Nora Normal"]);
     fireEvent.click(toggle);
@@ -314,9 +314,12 @@ describe("PadronView", () => {
     const row = rowByName("Ana Torres");
     fireEvent.click(within(row).getByRole("button", { name: /editar/i }));
 
-    // Break only edad: nombre and hb stay valid and unwired.
+    // Break only edad with an empty value: empties pass the native layer
+    // (no required) and reach the Spanish validation. Out-of-range numbers
+    // are blocked natively before the handler runs (pinned below); the
+    // wiring asserted here is identical either way.
     fireEvent.change(screen.getByLabelText(/edad/i), {
-      target: { value: "5" },
+      target: { value: "" },
     });
     fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
 
@@ -789,12 +792,15 @@ describe("PadronView", () => {
     expect(usePadronStore.getState().pacientes[0].nombre).toBe("Ana Torres");
   });
 
-  it("names the severity-first toggle with the exact badge taxonomy", () => {
+  it("names the severity-first toggle in plain language, not badge taxonomy", () => {
     seedTwo();
     render(<PadronView />);
     expect(
-      screen.getByRole("checkbox", { name: /ver anemia moderada y severa primero/i }),
+      screen.getByRole("checkbox", { name: /ver los casos más graves primero/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Ver Anemia Moderada y Severa primero"),
+    ).not.toBeInTheDocument();
   });
 
   it("focuses Confirmar when a single delete is armed so Enter completes it", () => {
@@ -1852,10 +1858,12 @@ describe("PadronView edit-row duplicate parity (P2-3)", () => {
       target: { value: "Ana Torres" },
     });
     fireEvent.change(screen.getByLabelText(/edad/i), {
-      target: { value: "5" },
+      target: { value: "" },
     });
     fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
-    // Field error wins; no duplicate warning yet, nothing saved.
+    // Field error wins; no duplicate warning yet, nothing saved. (Empty
+    // reaches the handler; an out-of-range number would be blocked natively
+    // first — same order, earlier layer.)
     expect(screen.getByRole("alert")).toHaveTextContent(
       "La edad debe estar entre 6 y 59 meses.",
     );
@@ -2284,5 +2292,130 @@ describe("PadronView contextual help (run-22 P3-3)", () => {
     render(<PadronView />);
     expect(screen.getByText(/no hay pacientes registrados/i)).toBeInTheDocument();
     expect(screen.queryByTestId("padron-pending")).not.toBeInTheDocument();
+  });
+});
+
+describe("PadronView duplicate badge action (run-25 P2-1)", () => {
+  function seedTwins() {
+    const { add } = usePadronStore.getState();
+    add({ nombre: "María López", edadMeses: 24, nivelHemoglobina: 12.0 });
+    add({ nombre: "Maria Lopez", edadMeses: 30, nivelHemoglobina: 11.0 });
+    add({ nombre: "Luis Paz", edadMeses: 28, nivelHemoglobina: 12.0 });
+  }
+
+  it("renders the duplicate badge as a button that names its next step", () => {
+    seedTwins();
+    render(<PadronView />);
+    // One badge-button per twin; the unique row has none.
+    const badges = screen.getAllByRole("button", {
+      name: /filtrar por este nombre para revisar duplicados/i,
+    });
+    expect(badges).toHaveLength(2);
+    for (const badge of badges) {
+      // Badge look kept, action affordance added.
+      expect(badge).toHaveTextContent("Posible duplicado");
+      expect(badge.tagName).toBe("BUTTON");
+      expect(badge).toHaveAttribute("type", "button");
+    }
+    expect(
+      within(rowByName("Luis Paz")).queryByRole("button", {
+        name: /filtrar por este nombre/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lands on the suspected twins when the badge is tapped", () => {
+    seedTwins();
+    render(<PadronView />);
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: /filtrar por este nombre para revisar duplicados/i,
+      })[0],
+    );
+    // Same setter as the filter input: the input reflects the badge tap…
+    expect(screen.getByLabelText(/buscar por nombre/i)).toHaveValue(
+      "María López",
+    );
+    // …and the table narrows to the twins (bulk scope follows: the bar
+    // derives from this same visible slice).
+    expect(screen.getByText("María López")).toBeInTheDocument();
+    expect(screen.getByText("Maria Lopez")).toBeInTheDocument();
+    expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
+  });
+});
+
+describe("PadronView edit-row native bounds (run-25 P2-2)", () => {
+  function openEditFor(name: string) {
+    fireEvent.click(
+      within(rowByName(name)).getByRole("button", { name: /editar/i }),
+    );
+  }
+
+  it("constrains Edad/Hb early with native bounds, keeping inputMode", () => {
+    seedTwo();
+    render(<PadronView />);
+    openEditFor("Ana Torres");
+    const edad = screen.getByLabelText(/edad/i);
+    expect(edad).toHaveAttribute("type", "number");
+    expect(edad).toHaveAttribute("min", "6");
+    expect(edad).toHaveAttribute("max", "59");
+    expect(edad).toHaveAttribute("step", "1");
+    expect(edad).toHaveAttribute("inputmode", "numeric");
+    const hb = screen.getByLabelText(/hemoglobina/i);
+    expect(hb).toHaveAttribute("type", "number");
+    expect(hb).toHaveAttribute("min", "0.1");
+    expect(hb).toHaveAttribute("step", "0.1");
+    expect(hb).toHaveAttribute("inputmode", "decimal");
+  });
+
+  it("blocks out-of-range edit values natively; the backstop owns the rest", () => {
+    seedTwo();
+    render(<PadronView />);
+    openEditFor("Ana Torres");
+    const edad = screen.getByLabelText(/edad/i) as HTMLInputElement;
+    fireEvent.change(edad, { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    // Native layer first: the submit never reaches the handler, so the row
+    // stays open with no inline error and nothing saved.
+    expect(edad.validity.rangeUnderflow).toBe(true);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
+    expect(usePadronStore.getState().pacientes[0].edadMeses).toBe(24);
+    // Backstop: an empty value passes native (no required) and the Spanish
+    // validation rejects it with the same clinical copy.
+    fireEvent.change(edad, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts.some((a) => /edad debe estar entre 6 y 59/i.test(a.textContent ?? ""))).toBe(true);
+    expect(usePadronStore.getState().pacientes[0].edadMeses).toBe(24);
+  });
+});
+
+describe("PadronView bulk rest hint (run-25 P3-2)", () => {
+  it("hints the bulk bar at rest and yields to the bar on selection", () => {
+    seedTwo();
+    render(<PadronView />);
+    expect(
+      screen.getByText("Selecciona pacientes para acciones en lote"),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /seleccionar a ana torres/i }),
+    );
+    expect(
+      screen.queryByText("Selecciona pacientes para acciones en lote"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("1 seleccionado en vista")).toBeInTheDocument();
+  });
+
+  it("stays hidden when the filter matches nothing", () => {
+    seedTwo();
+    render(<PadronView />);
+    fireEvent.change(screen.getByLabelText(/buscar/i), {
+      target: { value: "zzz" },
+    });
+    expect(screen.getByText(/sin resultados/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText("Selecciona pacientes para acciones en lote"),
+    ).not.toBeInTheDocument();
   });
 });

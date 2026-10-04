@@ -126,8 +126,21 @@ export function RegisterForm() {
         </Field>
         <Field data-invalid={edadError ? true : undefined}>
           <FieldLabel htmlFor="edad">Edad (meses)</FieldLabel>
+          {/* Early native bounds (harden): desktop users meet 6–59 before
+              submit. Preemptive, not merely advisory — out-of-range values
+              never reach the handler (jsdom enforces this on submit-button
+              clicks exactly like real browsers, verified by test), so the
+              submit validation below is the backstop for what passes native
+              (empties, non-numerics). The draft store still receives strings
+              (e.target.value is always a string, even for type=number).
+              Hb floors the "> 0" rule at min 0.1 natively; validation
+              enforces the strict inequality. */}
           <Input
             id="edad"
+            type="number"
+            min={6}
+            max={59}
+            step={1}
             inputMode="numeric"
             value={edad}
             onChange={(e) => {
@@ -144,6 +157,9 @@ export function RegisterForm() {
           <FieldLabel htmlFor="hb">Hemoglobina (g/dL)</FieldLabel>
           <Input
             id="hb"
+            type="number"
+            min={0.1}
+            step={0.1}
             inputMode="decimal"
             value={hb}
             onChange={(e) => {
