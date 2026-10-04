@@ -930,6 +930,101 @@ describe("sync outcome note (run-30 P1-b)", () => {
   });
 });
 
+describe("live connectivity outranks standing notice (run-4 P2) + offline-clean (minor)", () => {
+  it("reads offline-clean as bare offline, never the zero-queue fragment", () => {
+    setOnline(false);
+    render(<SyncStatusChip />);
+    expect(statusText()).toBe("Sin conexión");
+  });
+
+  it("lets the offline line beat a standing success, then restores the notice on reconnect", async () => {
+    const id = seedDirty();
+    pushMock.mockResolvedValue({
+      ok: true,
+      pushedIds: [id],
+      message: "Se sincronizó 1 registro con Supabase.",
+    });
+    render(<SyncStatusChip />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+    await screen.findByText("Se sincronizó 1 registro con Supabase.");
+    expect(statusText()).toBe("Se sincronizó 1 registro con Supabase.");
+
+    // Mid-jornada signal loss: live connectivity wins, never the
+    // congratulation. Pending is 0 after the sync, so the offline-clean
+    // minor reads bare "Sin conexión" here too.
+    act(() => {
+      setOnline(false);
+      fireEvent(window, new Event("offline"));
+    });
+    expect(statusText()).toBe("Sin conexión");
+    // Still the single announcer: the transition speaks once, nothing ticks.
+    expect(
+      within(screen.getByTestId("sync-status-chip")).getAllByRole("status"),
+    ).toHaveLength(1);
+
+    // Reconnect: derive-not-clear keeps the stored notice, so it speaks
+    // again instead of being lost to the outage.
+    act(() => {
+      setOnline(true);
+      fireEvent(window, new Event("online"));
+    });
+    expect(statusText()).toBe("Se sincronizó 1 registro con Supabase.");
+  });
+
+  it("names the collapsed chip offline (name + title) while a notice stands", () => {
+    guard.recordSyncNotice("Se sincronizó 1 registro con Supabase.");
+    setOnline(false);
+    render(<SyncStatusChip collapsed />);
+
+    const chip = screen.getByTestId("sync-status-chip");
+    // Accessible name: the offline line, never the congratulation.
+    expect(within(chip).getByRole("status")).toHaveAttribute(
+      "aria-label",
+      "Sin conexión",
+    );
+    // Tooltip mirrors the same announced line (P2 title fix).
+    expect(chip.getAttribute("title")).toMatch(/^Sin conexión/);
+    expect(chip.getAttribute("title")).not.toMatch(/sincronizó 1 registro/);
+  });
+
+  it("aligns the collapsed action tooltip with the announced notice, not raw status", async () => {
+    // Mid-flight edit keeps its row dirty through the sync, so online the
+    // notice still stands beside pending work and the action stays visible.
+    const id = seedDirty();
+    usePadronStore.setState((state) => ({
+      pacientes: state.pacientes.map((p) => ({
+        ...p,
+        updatedAt: "2026-10-01T10:00:00.000Z",
+      })),
+    }));
+    pushMock.mockImplementationOnce(async () => {
+      usePadronStore.getState().update(id, { nombre: "Ana Editada" });
+      return {
+        ok: true,
+        pushedIds: [id],
+        message: "Se sincronizó 1 registro con Supabase.",
+      };
+    });
+    render(<SyncStatusChip collapsed />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId("sync-status-chip")).getByRole("status"),
+      ).toHaveAttribute(
+        "aria-label",
+        "Se sincronizó 1 registro con Supabase.",
+      );
+    });
+    // The tooltip voices whatever the announcer voices — the raw queue
+    // text ("1 por sincronizar") must never disagree with the live name.
+    expect(
+      screen.getByRole("button", { name: /^sincronizar$/i }).getAttribute("title"),
+    ).toContain("Se sincronizó 1 registro con Supabase.");
+  });
+});
+
 describe("single error announcer per viewport (run-25 P3-1)", () => {
   it("removes the phone-row alert from the desktop tree by construction", async () => {
     seedDirty();

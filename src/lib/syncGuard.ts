@@ -45,6 +45,18 @@ export function formatSyncPending(count: number): string {
   return `${count} por sincronizar`;
 }
 
+// Offline status line: the vocabulary source for every surface that names
+// the offline state. Connectivity truth first, queue depth only when it
+// says something — offline + 0 pending reads "Sin conexión" alone (the
+// zero-queue fragment is noise; the receipt already carries the sync
+// truth), offline + N keeps the count ("Sin conexión · N por
+// sincronizar").
+export function formatSyncOffline(count: number): string {
+  return count > 0
+    ? `${SYNC_STATUS_OFFLINE} · ${formatSyncPending(count)}`
+    : SYNC_STATUS_OFFLINE;
+}
+
 // Full "Última sincronización hace …" label for a given elapsed second
 // count. Escalates honestly with floored units and no invented precision:
 // under a minute shows seconds, under an hour shows whole minutes, beyond

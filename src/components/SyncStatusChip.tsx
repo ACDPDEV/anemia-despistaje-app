@@ -8,6 +8,7 @@ import {
   clearSyncError,
   clearSyncNotice,
   formatLastSyncAgo,
+  formatSyncOffline,
   formatSyncPending,
   guardedPull,
   isSyncing,
@@ -20,7 +21,6 @@ import {
   subscribeSyncState,
   SYNC_BUSY_MESSAGE,
   SYNC_NEVER_SYNCED_RECEIPT,
-  SYNC_STATUS_OFFLINE,
   SYNC_STATUS_SAFE,
   SYNCING_LABEL,
 } from "../lib/syncGuard";
@@ -133,7 +133,7 @@ export function useSyncAction(): SyncAction {
   }, [pending]);
 
   const text = !online
-    ? `${SYNC_STATUS_OFFLINE} · ${formatSyncPending(pending)}`
+    ? formatSyncOffline(pending)
     : pending > 0
       ? formatSyncPending(pending)
       : SYNC_STATUS_SAFE;
@@ -254,13 +254,17 @@ export function useSyncAction(): SyncAction {
     lastSyncAt === null
       ? SYNC_NEVER_SYNCED_RECEIPT
       : formatLastSyncAgo(Math.max(0, Math.floor((Date.now() - lastSyncAt) / 1000)));
-  // The chip's single announcer: the last outcome note (success/cooldown)
-  // when one stands, else the pending/safe status. A stale note never
-  // covers NEW dirty rows (run-31 P1): the transition effect below clears
-  // the notice when the queue goes 0→>0, so after sync → register the
-  // pending line wins. Static between sync actions, so receipt ticks
-  // never re-announce it.
-  const displayText = notice ?? text;
+  // The chip's single announcer: live connectivity outranks the last
+  // outcome note — offline the pending/safe status always wins over a
+  // standing congratulation (a mid-jornada signal loss must never keep
+  // congratulating), and the stored notice survives underneath so it may
+  // speak again on reconnect. Online, the last outcome note (success/
+  // cooldown) wins when one stands, else the pending/safe status. A stale
+  // note never covers NEW dirty rows (run-31 P1): the transition effect
+  // below clears the notice when the queue goes 0→>0, so after sync →
+  // register the pending line wins. Static between sync actions, so
+  // receipt ticks never re-announce it.
+  const displayText = !online ? text : (notice ?? text);
   // Mirrors the full status so the collapsed (icon-only) sidebar clipping
   // stays discoverable through the native tooltip.
   const title = error ? `${displayText} · ${error}` : `${displayText} · ${receipt}`;
@@ -376,7 +380,6 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
     pending,
     syncing,
     error,
-    text,
     displayText,
     receipt,
     title,
@@ -451,7 +454,7 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
               aria-label={buttonLabel}
               aria-describedby="sync-receipt-collapsed"
               aria-keyshortcuts="Alt+G"
-              title={`${buttonLabel} (Alt+G) · ${text}`}
+              title={`${buttonLabel} (Alt+G) · ${displayText}`}
               onClick={() => void handleSync()}
             >
               <RefreshCw aria-hidden="true" />

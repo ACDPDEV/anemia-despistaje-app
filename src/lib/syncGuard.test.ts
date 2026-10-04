@@ -135,6 +135,14 @@ describe("pull cooldown", () => {
   });
 });
 
+describe("formatSyncOffline (offline-clean vocabulary)", () => {
+  it("reads bare offline when clean, queue depth only when pending", () => {
+    expect(guard.formatSyncOffline(0)).toBe("Sin conexión");
+    expect(guard.formatSyncOffline(1)).toBe("Sin conexión · 1 por sincronizar");
+    expect(guard.formatSyncOffline(3)).toBe("Sin conexión · 3 por sincronizar");
+  });
+});
+
 describe("push skip-when-clean pin (sync.ts behavior unchanged)", () => {
   it("stays a no-op with the Spanish pending message when nothing is dirty", async () => {
     const upsert = vi.fn(async (_rows: RemotePacienteRow[]) => {});
