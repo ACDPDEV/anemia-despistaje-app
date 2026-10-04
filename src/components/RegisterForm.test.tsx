@@ -277,7 +277,7 @@ describe("RegisterForm", () => {
     expect(confirmation.innerHTML).not.toMatch(/green-700/);
   });
 
-  it("names the patient in the success receipt on a single line", () => {
+  it("names the patient in the success receipt without clipping the diagnosis", () => {
     render(<RegisterForm />);
     fillAndSubmit("Ana Torres", "24", "12.0");
 
@@ -285,9 +285,14 @@ describe("RegisterForm", () => {
     expect(confirmation).toHaveTextContent(
       "Paciente registrado: Ana Torres — Normal",
     );
-    // ONE line on phones: long names truncate instead of wrapping.
+    // Run-33 P2 (clarify): the diagnosis is the clinical payoff, so the
+    // receipt wraps instead of truncating — no truncate, wrap-friendly.
     const receipt = confirmation.querySelector(".text-success")!;
-    expect(receipt.className).toMatch(/truncate/);
+    expect(receipt.className).not.toMatch(/truncate/);
+    expect(receipt.className).toMatch(/break-words/);
+    // Wrapped layout stays quiet: block spans the full line, diagnosis may
+    // fall to its own line on 320–360px with a 120-char name.
+    expect(receipt.className).toMatch(/block/);
   });
 
   it("keeps the receipt clear of the sticky phone bar (run-30 P3-1)", () => {
@@ -302,6 +307,7 @@ describe("RegisterForm", () => {
     render(<RegisterForm />);
     const submit = screen.getByTestId("register-submit");
     expect(submit).toHaveAttribute("aria-keyshortcuts", "Alt+S");
+    expect(submit.getAttribute("title")).toContain("Alt+S");
     expect(submit).toHaveTextContent(/^registrar paciente$/i);
   });
 
@@ -596,8 +602,11 @@ describe("RegisterForm phone submit bar (run-29 P2-1)", () => {
     expect(phone).toHaveTextContent(/^registrar$/i);
     expect(phone.className).toMatch(/min-h-11/);
     expect(phone.className).toMatch(/w-full/);
-    // Same shortcut grammar as the primary (shared Alt+S mechanism).
-    expect(phone).toHaveAttribute("aria-keyshortcuts", "Alt+S");
+    // Run-33 P3 (harden): the phone has no Alt key, so only the desktop
+    // primary claims Alt+S — the phone bar carries the bare action name.
+    expect(phone).not.toHaveAttribute("aria-keyshortcuts");
+    expect(phone.getAttribute("title")).not.toMatch(/Alt\+S/);
+    expect(phone.getAttribute("title")).toMatch(/registrar paciente/i);
   });
 
   it("submits the form through the phone button with identical guards", () => {

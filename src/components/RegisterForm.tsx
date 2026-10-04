@@ -232,7 +232,7 @@ export function RegisterForm() {
         // clear of the sticky phone submit bar when scrolled into view.
         <p role="status" className="text-sm scroll-mb-24">
           {lastRegistered && (
-            <span className="block truncate text-success">
+            <span className="block text-success break-words">
               Paciente registrado: {lastRegistered.nombre} —{" "}
               <strong>{lastRegistered.diagnostico}</strong>
             </span>
@@ -276,7 +276,9 @@ export function RegisterForm() {
           by construction (this component mounts on the Registro tab
           alone). Quiet Card surface (border-top, bg-card, no shadow, no
           live region — nothing to double-announce): the short "Registrar"
-          label is the small-screen form of the primary action. */}
+          label is the small-screen form of the primary action. No
+          aria-keyshortcuts or (Alt+S) title suffix here: phones have no
+          Alt key, so only the desktop primary claims the shortcut. */}
       <div
         data-testid="register-submit-bar"
         className="sticky bottom-0 border-t border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:hidden print:hidden"
@@ -284,8 +286,7 @@ export function RegisterForm() {
         <Button
           type="submit"
           data-testid="register-submit-phone"
-          aria-keyshortcuts="Alt+S"
-          title="Registrar paciente (Alt+S)"
+          title="Registrar paciente"
           className="min-h-11 w-full"
         >
           Registrar
