@@ -8,7 +8,7 @@ import {
   YAxis,
 } from "recharts";
 import { Badge } from "./ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { cn } from "../lib/utils";
 import type { Diagnosis } from "../domain/anemia";
 import { groupByAgeBand, type AgeBand } from "../lib/ageGroups";
@@ -29,6 +29,35 @@ export const DIAGNOSIS_BADGE: Record<
 };
 
 export type HbBandDatum = { band: Diagnosis; count: number };
+
+export type KpiMetric = "total" | "avg" | "anemia" | "modsev";
+
+// Pure presentation helper: metric + empty flag → Spanish trend caption.
+// Values stay on existing selectors; no store or domain change.
+export function captionFor(metric: KpiMetric, empty: boolean): string {
+  if (empty) {
+    switch (metric) {
+      case "total":
+        return "Sin registros en el padrón";
+      case "avg":
+        return "Sin registros";
+      case "anemia":
+        return "Sin datos de anemia";
+      case "modsev":
+        return "Sin casos moderados ni severos";
+    }
+  }
+  switch (metric) {
+    case "total":
+      return "Pacientes registrados en el padrón";
+    case "avg":
+      return "Promedio de la muestra actual";
+    case "anemia":
+      return "Porcentaje con algún grado de anemia";
+    case "modsev":
+      return "Casos que requieren seguimiento";
+  }
+}
 
 // Pure mapper: diagnosis counts → chart rows in BANDS order.
 export function toHbBandData(
@@ -66,6 +95,7 @@ export function DashboardView() {
         <Card>
           <CardHeader>
             <CardTitle>Total de pacientes</CardTitle>
+            <CardDescription>{captionFor("total", isEmpty)}</CardDescription>
           </CardHeader>
           <CardContent>
             <p data-testid="kpi-total" className="text-2xl font-semibold">
@@ -76,19 +106,18 @@ export function DashboardView() {
         <Card>
           <CardHeader>
             <CardTitle>Promedio de hemoglobina</CardTitle>
+            <CardDescription>{captionFor("avg", isEmpty)}</CardDescription>
           </CardHeader>
           <CardContent>
             <p data-testid="kpi-avg" className="text-2xl font-semibold">
               {isEmpty ? "—" : `${avg.toFixed(2)} g/dL`}
             </p>
-            {isEmpty && (
-              <p className="text-sm text-muted-foreground">Sin registros</p>
-            )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
             <CardTitle>Con anemia</CardTitle>
+            <CardDescription>{captionFor("anemia", isEmpty)}</CardDescription>
           </CardHeader>
           <CardContent>
             <p data-testid="kpi-anemia-pct" className="text-2xl font-semibold">
@@ -99,6 +128,7 @@ export function DashboardView() {
         <Card>
           <CardHeader>
             <CardTitle>Moderada + Severa</CardTitle>
+            <CardDescription>{captionFor("modsev", isEmpty)}</CardDescription>
           </CardHeader>
           <CardContent>
             <p data-testid="kpi-modsev" className="text-2xl font-semibold">

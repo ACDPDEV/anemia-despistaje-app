@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
-import { DashboardView, toHbBandData } from "./DashboardView";
+import { captionFor, DashboardView, toHbBandData } from "./DashboardView";
 
 const HB_BANDS = ["Normal", "Anemia Leve", "Anemia Moderada", "Anemia Severa"];
 
@@ -71,19 +71,75 @@ describe("DashboardView", () => {
     expect(within(chart).getByText("2")).toBeInTheDocument();
   });
 
+  it("shows every KPI card with value plus exactly one Spanish caption", () => {
+    seedPadron();
+    render(<DashboardView />);
+
+    const expectations: Array<[string, string]> = [
+      ["Total de pacientes", "Pacientes registrados en el padrón"],
+      ["Promedio de hemoglobina", "Promedio de la muestra actual"],
+      ["Con anemia", "Porcentaje con algún grado de anemia"],
+      ["Moderada + Severa", "Casos que requieren seguimiento"],
+    ];
+    for (const [title, caption] of expectations) {
+      const card = screen.getByText(title).closest("div[data-slot='card']")!;
+      expect(within(card as HTMLElement).getByText(caption)).toBeInTheDocument();
+      // Exactly one caption line per card (CardDescription slot)
+      const descriptions = (card as HTMLElement).querySelectorAll(
+        "[data-slot='card-description']",
+      );
+      expect(descriptions).toHaveLength(1);
+    }
+  });
+
+  it("shows empty-state Spanish captions instead of trends", () => {
+    render(<DashboardView />);
+
+    const expectations: Array<[string, string]> = [
+      ["Total de pacientes", "Sin registros en el padrón"],
+      ["Promedio de hemoglobina", "Sin registros"],
+      ["Con anemia", "Sin datos de anemia"],
+      ["Moderada + Severa", "Sin casos moderados ni severos"],
+    ];
+    for (const [title, caption] of expectations) {
+      const card = screen.getByText(title).closest("div[data-slot='card']")!;
+      expect(within(card as HTMLElement).getByText(caption)).toBeInTheDocument();
+      const descriptions = (card as HTMLElement).querySelectorAll(
+        "[data-slot='card-description']",
+      );
+      expect(descriptions).toHaveLength(1);
+    }
+  });
+
   it("shows the empty state with em-dash and Sin registros", () => {    render(<DashboardView />);
 
     expect(screen.getByText("Total de pacientes")).toBeInTheDocument();
     expect(screen.getByTestId("kpi-total")).toHaveTextContent("0");
     expect(screen.getByTestId("kpi-avg")).toHaveTextContent("—");
     expect(screen.getByTestId("kpi-anemia-pct")).toHaveTextContent("—");
-    expect(screen.getByText(/sin registros/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/sin registros/i).length).toBeGreaterThanOrEqual(1);
     // Total + 4 diagnosis counts are zero without errors
     expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(5);
     const bandCounts = screen.getByTestId("band-counts");
     for (const band of HB_BANDS) {
       expect(within(bandCounts).getByText(band)).toBeInTheDocument();
     }
+  });
+});
+
+describe("captionFor", () => {
+  it("returns Spanish trend captions for non-empty state", () => {
+    expect(captionFor("total", false)).toBe("Pacientes registrados en el padrón");
+    expect(captionFor("avg", false)).toBe("Promedio de la muestra actual");
+    expect(captionFor("anemia", false)).toBe("Porcentaje con algún grado de anemia");
+    expect(captionFor("modsev", false)).toBe("Casos que requieren seguimiento");
+  });
+
+  it("returns Spanish empty-state captions", () => {
+    expect(captionFor("total", true)).toBe("Sin registros en el padrón");
+    expect(captionFor("avg", true)).toBe("Sin registros");
+    expect(captionFor("anemia", true)).toBe("Sin datos de anemia");
+    expect(captionFor("modsev", true)).toBe("Sin casos moderados ni severos");
   });
 });
 
