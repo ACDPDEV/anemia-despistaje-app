@@ -3,7 +3,7 @@ import { usePadronStore, type Paciente } from "../stores/padronStore";
 
 // List + edit/delete view over the padron store selectors.
 export function PadronView() {
-  const pacientes = usePadronStore((s) => s.pacientes);
+  const pacientes = usePadronStore((s) => s.pacientes).filter((p) => !p.deletedAt);
 
   if (pacientes.length === 0) {
     return (

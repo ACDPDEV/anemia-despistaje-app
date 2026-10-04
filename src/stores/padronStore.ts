@@ -39,7 +39,7 @@ function validateInput(input: NewPaciente): void {
   if (!input.nombre || input.nombre.trim().length === 0) {
     throw new Error("El nombre del paciente es obligatorio.");
   }
-  if (!Number.isInteger(input.edadMeses) && !(typeof input.edadMeses === "number")) {
+  if (!Number.isInteger(input.edadMeses)) {
     throw new Error("La edad debe estar entre 6 y 59 meses.");
   }
   if (input.edadMeses < 6 || input.edadMeses > 59) {
@@ -62,7 +62,7 @@ export const usePadronStore = create<PadronState>()(
       add: (input) =>
         set((state) => {
           validateInput(input);
-          if (state.pacientes.length >= MAX_PADRON) {
+          if (state.pacientes.filter((p) => !p.deletedAt).length >= MAX_PADRON) {
             throw new Error(`El padrón está lleno (máximo ${MAX_PADRON} pacientes).`);
           }
           const paciente: Paciente = {
@@ -100,20 +100,27 @@ export const usePadronStore = create<PadronState>()(
 
       remove: (id) =>
         set((state) => ({
-          pacientes: state.pacientes.filter((p) => p.id !== id),
+          pacientes: state.pacientes.map((p) => {
+            if (p.id !== id) return p;
+            const now = new Date().toISOString();
+            return { ...p, deletedAt: now, updatedAt: now, dirty: true };
+          }),
         })),
 
       countByDiagnosis: () => {
         const counts = emptyCounts();
-        for (const p of get().pacientes) counts[p.diagnostico] += 1;
+        for (const p of get().pacientes) {
+          if (p.deletedAt) continue;
+          counts[p.diagnostico] += 1;
+        }
         return counts;
       },
 
       averageHb: () => {
-        const { pacientes } = get();
-        if (pacientes.length === 0) return 0;
-        const sum = pacientes.reduce((acc, p) => acc + p.nivelHemoglobina, 0);
-        return sum / pacientes.length;
+        const visible = get().pacientes.filter((p) => !p.deletedAt);
+        if (visible.length === 0) return 0;
+        const sum = visible.reduce((acc, p) => acc + p.nivelHemoglobina, 0);
+        return sum / visible.length;
       },
 
       reset: () => set({ pacientes: [] }),

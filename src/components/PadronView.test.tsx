@@ -46,7 +46,11 @@ describe("PadronView", () => {
     render(<PadronView />);
     const row = screen.getByText("Luis Paz").closest("li")!;
     fireEvent.click(within(row).getByRole("button", { name: /eliminar/i }));
-    expect(usePadronStore.getState().pacientes).toHaveLength(1);
+    const { pacientes } = usePadronStore.getState();
+    expect(pacientes).toHaveLength(2);
+    const tombstone = pacientes.find((p) => p.nombre === "Luis Paz")!;
+    expect(tombstone.deletedAt).toEqual(expect.any(String));
+    expect(tombstone.dirty).toBe(true);
     expect(screen.queryByText("Luis Paz")).not.toBeInTheDocument();
     expect(screen.getByText("Ana Torres")).toBeInTheDocument();
   });

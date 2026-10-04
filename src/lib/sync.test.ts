@@ -164,6 +164,21 @@ describe("pushDirty", () => {
     expect(getDirtyPacientes(next)).toHaveLength(0);
   });
 
+  it("pushes dirty tombstones with deleted_at so deletes replicate (B2)", async () => {
+    const tombstone = makeLocal({
+      updatedAt: "2026-10-04T10:00:00.000Z",
+      dirty: true,
+      deletedAt: "2026-10-04T10:00:00.000Z",
+    });
+    const table = makeFakeTable();
+
+    const result = await pushDirty([tombstone], table, true);
+
+    expect(result.ok).toBe(true);
+    expect(result.pushedIds).toEqual([tombstone.id]);
+    expect(table.upsertCalls).toBe(1);
+    expect(table.upserted[0][0]).toMatchObject({ deleted_at: "2026-10-04T10:00:00.000Z" });
+  });
   it("is a no-op with a Spanish pending message when nothing is dirty", async () => {
     const table = makeFakeTable();
     const result = await pushDirty([makeLocal({ dirty: false })], table, true);
@@ -260,6 +275,37 @@ describe("pullRemote", () => {
 
     expect(merged.map((p) => p.id)).toEqual(["t"]);
     expect(merged.find((p) => p.id === "gone")).toBeUndefined();
+  });
+
+  it("keeps a winning local tombstone for push but drops a winning remote delete (B2)", () => {
+    const localTombstone = makeLocal({
+      id: "mine",
+      updatedAt: "2026-10-04T10:00:00.000Z",
+      dirty: true,
+      deletedAt: "2026-10-04T10:00:00.000Z",
+    });
+    const localStale = makeLocal({
+      id: "theirs",
+      updatedAt: "2026-10-01T10:00:00.000Z",
+    });
+    const merged = mergePacientes(
+      [localTombstone, localStale],
+      [
+        makeRemote({ id: "mine", updated_at: "2026-10-01T10:00:00.000Z" }),
+        makeRemote({
+          id: "theirs",
+          updated_at: "2026-10-04T10:00:00.000Z",
+          deleted_at: "2026-10-04T10:00:00.000Z",
+        }),
+      ],
+    );
+
+    const kept = merged.find((p) => p.id === "mine")!;
+    expect(kept.deletedAt).toBe("2026-10-04T10:00:00.000Z");
+    expect(kept.dirty).toBe(true);
+    expect(getDirtyPacientes(merged).map((p) => p.id)).toContain("mine");
+    expect(toRemoteRow(kept)).toMatchObject({ deleted_at: "2026-10-04T10:00:00.000Z" });
+    expect(merged.find((p) => p.id === "theirs")).toBeUndefined();
   });
 });
 
