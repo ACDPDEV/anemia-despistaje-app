@@ -70,18 +70,31 @@ export let isSyncing = false;
 // really hit the remote. Null until the first successful pull.
 export let lastPullAt: number | null = null;
 
+// Last sync failure, module-scoped so every sync surface (footer chip,
+// collapsed icon, phone rows) reads one error. Same subscription pattern
+// as lastPullAt: set/clear notifies, readers mirror it live. Success (and
+// the start of a retry) clears it. The in-flight flag stays the per-render
+// mirror it already was — only the error STRING needed one source, after
+// sequential failures left two useSyncAction instances disagreeing.
+export let lastSyncError: string | null = null;
+// Wall-clock ms of the last failure; informational (ordering/debugging),
+// never rendered — the chip receipt already owns the time vocabulary.
+export let lastSyncErrorAt: number | null = null;
+
 // Reactive payload: sync flag plus last-pull timestamp so the receipt line
-// can update live after a sync completes.
+// can update live after a sync completes, plus the shared last error so a
+// failure on one surface appears on every other surface.
 export interface SyncState {
   isSyncing: boolean;
   lastPullAt: number | null;
+  lastSyncError: string | null;
 }
 
 type Listener = (state: SyncState) => void;
 const listeners = new Set<Listener>();
 
 function notify(): void {
-  const state: SyncState = { isSyncing, lastPullAt };
+  const state: SyncState = { isSyncing, lastPullAt, lastSyncError };
   for (const listener of listeners) listener(state);
 }
 
@@ -130,6 +143,24 @@ export function recordPull(now: number = Date.now()): void {
   notify();
 }
 
+// Records a sync failure as the single shared last error and notifies, so
+// every mounted surface shows it. A successful sync (or the start of a
+// retry) clears it through clearSyncError.
+export function recordSyncError(message: string, now: number = Date.now()): void {
+  lastSyncError = message;
+  lastSyncErrorAt = now;
+  notify();
+}
+
+// Clears the shared last error (success path, or a retry starting) and
+// notifies so every surface drops its alert line together.
+export function clearSyncError(): void {
+  if (lastSyncError === null) return;
+  lastSyncError = null;
+  lastSyncErrorAt = null;
+  notify();
+}
+
 export interface GuardedPullOptions {
   now?: number;
   cooldownMs?: number;
@@ -165,10 +196,12 @@ export async function guardedPull(
   return outcome;
 }
 
-// Test-only seam: clears the in-flight flag, the cooldown timestamp, and any
-// subscribers so suites stay isolated.
+// Test-only seam: clears the in-flight flag, the cooldown timestamp, the
+// shared last error, and any subscribers so suites stay isolated.
 export function resetSyncGuardForTests(): void {
   isSyncing = false;
   lastPullAt = null;
+  lastSyncError = null;
+  lastSyncErrorAt = null;
   listeners.clear();
 }

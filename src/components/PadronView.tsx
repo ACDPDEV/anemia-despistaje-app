@@ -37,7 +37,7 @@ import {
   SYNC_STATUS_SAFE,
 } from "../lib/syncGuard";
 import { useSlidingExpiry } from "../hooks/useSlidingExpiry";
-import { SyncActionButton, useSyncAction } from "./SyncStatusChip";
+import { PhoneSyncRow } from "./SyncStatusChip";
 import { XIcon } from "lucide-react";
 
 const COLUMN_COUNT = 6;
@@ -145,10 +145,9 @@ export function PadronView({
     return subscribeSyncState((state) => setLastSyncAt(state.lastPullAt));
   }, []);
   // Phone-first sync affordance (layout): the sidebar footer lives inside
-  // the hamburger Sheet, so this hook is the SAME state + handler the chip
-  // uses (one vocabulary, one data-sync-action tag for Alt+G) — never a
-  // second behavior.
-  const sync = useSyncAction();
+  // the hamburger Sheet, so the shared PhoneSyncRow (same state + handler
+  // the chip uses: one vocabulary, one data-sync-action tag for Alt+G)
+  // renders sync on the first screen — never a second behavior.
   const [filter, setFilter] = useState("");
   const [gravesPrimero, setGravesPrimero] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -473,6 +472,13 @@ export function PadronView({
   // Desktop (sm+): docked bottom-LEFT — the row-action column lives on the
   // right (last table column), so a right-docked toast would cover row
   // actions; left-docking clears them with zero layout shift.
+  // Overlap tradeoff (deliberate, keep): on phones the toast can cover the
+  // last card for up to 8s. Accepted because the notice is transient (each
+  // group expires on its own 8s timer), dismissible in one tap (Cerrar
+  // aviso), and focus lands on Deshacer — the eye is already there, so the
+  // covered row is re-checked right after the tap. No bottom offset is
+  // added on purpose: pushing the list up would shift row targets under
+  // the thumb mid-jornada. Revisit if field reports show confusion.
   const undoToast = undoGroups.length > 0 && (
     <div
       role="status"
@@ -693,52 +699,16 @@ export function PadronView({
           </Button>
         </div>
       </div>
-      {/* Phone-only sync row: the sidebar footer (with the sync chip) hides
-          inside the hamburger Sheet, so phones get sync on the first
-          screen — compact status text plus the shared sync action, quiet
-          when clean + online like the chip. sm:hidden keeps it off desktop
-          (the footer chip owns that surface); print:hidden keeps it off
-          paper. Failure speaks through a compact role="alert" line rendering
-          the SAME error string as the chip's alert (one hook, one
-          vocabulary — never a copied string), styled identically
-          (text-xs text-destructive).
-          Double-announce audit (honest answer): no suppression needed.
-          Each useSyncAction instance owns its own error state, so only the
-          surface that ran the failed sync announces — normally exactly one
-          live region. With the sidebar Sheet closed (the normal phone
-          state) the Sheet content unmounts and this row is the sole
-          announcer; with the Sheet open the Sheet is a modal overlay
-          holding focus while this row sits inert behind it. Both alerts
-          can co-exist only if both surfaces ran and failed independently,
-          and then they read the identical string — benign, not competing. */}
-      {(sync.pending > 0 ||
-        sync.error !== null ||
-        sync.syncing ||
-        !sync.online) && (
-        <div
-          data-testid="padron-sync-phone"
-          title={sync.title}
-          className="flex flex-col gap-1 sm:hidden print:hidden"
-        >
-          <div className="flex items-center gap-2">
-            <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {sync.text}
-            </p>
-            {sync.showAction && (
-              <SyncActionButton
-                label={sync.buttonLabel}
-                syncing={sync.syncing}
-                onSync={sync.handleSync}
-              />
-            )}
-          </div>
-          {sync.error !== null && (
-            <p role="alert" className="text-xs text-destructive">
-              {sync.error}
-            </p>
-          )}
-        </div>
-      )}
+      {/* Phone-only sync row (shared PhoneSyncRow: identical structure on
+          Registro/Padrón/Panel, quiet when clean + online). The last error
+          is module-owned (syncGuard), so a failure here reads the identical
+          string on the chip — both alerts can co-exist while both surfaces
+          are mounted, and then they agree by construction. With the sidebar
+          Sheet closed (the normal phone state) the Sheet content unmounts
+          and this row is the sole announcer; with the Sheet open the Sheet
+          is a modal overlay holding focus while this row sits inert behind
+          it. */}
+      <PhoneSyncRow testId="padron-sync-phone" />
       {/* Quiet capacity signal (P3): total registered over the full store,
           never the filtered view. Muted microcopy under the title — no
           alarm styling at any count, including 100 de 100 pacientes. */}

@@ -3,8 +3,10 @@ import type { ComponentProps } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AppSidebar } from "./app-sidebar";
 import { SidebarProvider } from "./ui/sidebar";
+import { Sheet, SheetContent } from "./ui/sheet";
 import * as auth from "../lib/auth";
 import { usePadronStore } from "../stores/padronStore";
+import { resetSyncGuardForTests } from "../lib/syncGuard";
 
 vi.mock("../lib/auth", () => ({
   isAuthConfigured: vi.fn(() => true),
@@ -53,6 +55,7 @@ function stubDesktopViewport() {
 beforeEach(() => {
   localStorage.clear();
   usePadronStore.getState().reset();
+  resetSyncGuardForTests();
   stubDesktopViewport();
   vi.clearAllMocks();
   menuButtonProps.length = 0;
@@ -130,6 +133,9 @@ describe("AppSidebar footer controls", () => {
     }
     expect(help).toHaveTextContent(/alt\+s/i);
     expect(help).toHaveTextContent(/alt\+g/i);
+    // View-scoped entries are named as intentional scoping, not drift:
+    // each view teaches its own scope in its own ¿Cómo funciona?
+    expect(help).toHaveTextContent(/cada vista explica lo suyo/i);
   });
 
   it("names the Alt+G sync shortcut in the shortcuts line", () => {
@@ -184,6 +190,39 @@ describe("AppSidebar collapsed footer", () => {
     expect(document.activeElement).toBe(
       screen.getByTestId("sidebar-help-collapsed"),
     );
+  });
+
+  it("unmounts closed Sheet content so Alt+G never targets a hidden chip", () => {
+    // Empirical Base UI check behind the Alt+G first-in-DOM rule: with the
+    // phone Sheet closed, its sidebar chip must leave the DOM entirely —
+    // only then does the mounted view's phone row win the shell query.
+    const { rerender } = render(
+      <Sheet open={false}>
+        <SheetContent>
+          <button type="button" data-sync-action="true">
+            Sincronizar
+          </button>
+        </SheetContent>
+      </Sheet>,
+    );
+    expect(
+      document.querySelector('button[data-sync-action="true"]'),
+    ).toBeNull();
+    // Open: the chip mounts and the query resolves to a working button.
+    rerender(
+      <Sheet open={true}>
+        <SheetContent>
+          <button type="button" data-sync-action="true">
+            Sincronizar
+          </button>
+        </SheetContent>
+      </Sheet>,
+    );
+    expect(
+      document.querySelector<HTMLButtonElement>(
+        'button[data-sync-action="true"]:not([disabled])',
+      ),
+    ).not.toBeNull();
   });
 });
 

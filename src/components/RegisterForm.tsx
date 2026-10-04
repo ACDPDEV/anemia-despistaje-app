@@ -3,6 +3,7 @@ import { getDuplicateWarning, MAX_NOMBRE, usePadronStore } from "../stores/padro
 import { useRegisterDraftStore } from "../stores/registerDraftStore";
 import { HB_CUTOFF_LABEL, type Diagnosis } from "../domain/anemia";
 import { HelpSteps } from "./app-sidebar";
+import { PhoneSyncRow } from "./SyncStatusChip";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -98,6 +99,12 @@ export function RegisterForm() {
 
   return (
     <form id="register-form" onSubmit={handleSubmit}>
+      {/* Phone-only sync row (shared PhoneSyncRow, identical structure on
+          Registro/Padrón/Panel): the sidebar footer hides inside the
+          hamburger Sheet on phones, so sync sits above the capture fields.
+          Quiet when clean + online — the capture loop never sees it. The
+          action is type="button", so it can never submit this form. */}
+      <PhoneSyncRow testId="register-sync-phone" />
       <FieldGroup>
         <Field data-invalid={nombreError ? true : undefined}>
           <FieldLabel htmlFor="nombre">Nombre del paciente</FieldLabel>

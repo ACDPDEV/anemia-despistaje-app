@@ -59,7 +59,12 @@ type AppSidebarProps = {
 // The 4 jornada steps + shortcuts line, shared verbatim by the expanded
 // <details> and the collapsed popover below — plus the RegisterForm
 // contextual entry (same steps at the Registro cutoff hint): one exported
-// component so the branches can never drift apart.
+// component so the branches can never drift apart. The closing scoping
+// line reads intentionally in both hosts: the sidebar footer names the
+// global steps while each view's own ¿Cómo funciona? teaches its scope
+// (Registro/Padrón/Panel disclosures are view-scoped), and inside the
+// Registro disclosure it names exactly the disclosure the reader just
+// opened.
 export function HelpSteps() {
   return (
     <>
@@ -72,6 +77,9 @@ export function HelpSteps() {
       <p className="mt-1">
         Atajos: Alt+1/2/3 cambian de pestaña, Alt+S registra, Alt+G
         sincroniza.
+      </p>
+      <p className="mt-1">
+        Cada vista explica lo suyo en su ¿Cómo funciona?
       </p>
     </>
   );

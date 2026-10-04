@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
+import { resetSyncGuardForTests } from "../lib/syncGuard";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
 import { captionFor, DashboardView, toHbBandData, triageSentence } from "./DashboardView";
 
@@ -18,6 +19,7 @@ function seedPadron() {
 beforeEach(() => {
   localStorage.clear();
   usePadronStore.getState().reset();
+  resetSyncGuardForTests();
 });
 
 describe("DashboardView", () => {
@@ -496,10 +498,10 @@ describe("DashboardView", () => {
     const help = screen.getByTestId("dashboard-help");
     expect(help.tagName).toBe("DETAILS");
     expect(help).toHaveTextContent(/¿cómo funciona\?/i);
-    // View-scoped copy: triage sentence, risk hues, collapsed details,
+    // View-scoped copy: triaje sentence, risk hues, collapsed details,
     // tombstone totals.
     for (const line of [
-      /frase de triage/i,
+      /frase de triaje/i,
       /peor diagnóstico observado/i,
       /colapsados por defecto/i,
       /excluyen registros eliminados/i,
@@ -570,5 +572,72 @@ describe("toHbBandData", () => {
       { band: "Anemia Moderada", count: 0 },
       { band: "Anemia Severa", count: 3 },
     ]);
+  });
+});
+
+describe("DashboardView phone sync row (run-24 P2-1)", () => {
+  function setOnline(value: boolean) {
+    Object.defineProperty(window.navigator, "onLine", {
+      value,
+      configurable: true,
+    });
+  }
+
+  it("renders the shared phone-only sync row under the header with the pending vocabulary", () => {
+    setOnline(true);
+    seedPadron();
+    render(<DashboardView />);
+    try {
+      const row = screen.getByTestId("dashboard-sync-phone");
+      // Phone surface only (CSS contract, same pin grammar as Padrón):
+      // off desktop, off paper.
+      expect(row.className).toMatch(/sm:hidden/);
+      expect(row.className).toMatch(/print:hidden/);
+      // Seeded rows are dirty: same syncGuard strings as the chip.
+      expect(row).toHaveTextContent("5 por sincronizar");
+      const action = within(row).getByRole("button", {
+        name: /^sincronizar$/i,
+      });
+      expect(action).toHaveAttribute("data-sync-action", "true");
+      expect(action).toHaveAttribute("aria-keyshortcuts", "Alt+G");
+      expect(action.getAttribute("title")).toContain("Alt+G");
+      // Quiet placement: under the section header/status area, ahead of
+      // the hero — never after the numbers.
+      const header = screen.getByText("Panel");
+      const hero = screen.getByTestId("hero-modsev");
+      expect(
+        header.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        row.compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    } finally {
+      setOnline(true);
+    }
+  });
+
+  it("stays quiet when clean and online, like the Padrón row", () => {
+    setOnline(true);
+    seedPadron();
+    const ids = usePadronStore.getState().pacientes.map((p) => p.id);
+    usePadronStore.getState().markSynced(ids);
+    render(<DashboardView />);
+    expect(screen.queryByTestId("dashboard-sync-phone")).not.toBeInTheDocument();
+  });
+
+  it("names the offline state with no action, mirroring the chip", () => {
+    setOnline(false);
+    seedPadron();
+    render(<DashboardView />);
+    try {
+      const row = screen.getByTestId("dashboard-sync-phone");
+      expect(row).toHaveTextContent(/sin conexión/i);
+      expect(row).toHaveTextContent("5 por sincronizar");
+      expect(
+        within(row).queryByRole("button", { name: /sincronizar/i }),
+      ).not.toBeInTheDocument();
+    } finally {
+      setOnline(true);
+    }
   });
 });

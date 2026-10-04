@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
-import { SyncStatusChip } from "./SyncStatusChip";
+import { PhoneSyncRow, SyncStatusChip } from "./SyncStatusChip";
 import { pushDirty } from "../lib/sync";
 import * as guard from "../lib/syncGuard";
 import { resetSyncGuardForTests } from "../lib/syncGuard";
@@ -28,13 +28,20 @@ vi.mock("../lib/syncGuard", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/syncGuard")>();
   return {
     ...actual,
-    // Spread copies the isSyncing/lastPullAt primitives by value; re-expose
-    // them live so the chip's subscription reads the real values.
+    // Spread copies the isSyncing/lastPullAt/lastSyncError primitives by
+    // value; re-expose them live so the chip's subscription reads the real
+    // values.
     get isSyncing() {
       return actual.isSyncing;
     },
     get lastPullAt() {
       return actual.lastPullAt;
+    },
+    get lastSyncError() {
+      return actual.lastSyncError;
+    },
+    get lastSyncErrorAt() {
+      return actual.lastSyncErrorAt;
     },
     runGuarded: vi.fn((fn: () => Promise<never>) => actual.runGuarded(fn)),
     guardedPull: vi.fn(async () => {
@@ -619,5 +626,71 @@ describe("SyncStatusChip", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("La red falló.");
     expect(screen.getByTestId("sync-receipt")).toBeInTheDocument();
+  });
+});
+
+describe("shared module sync error (run-24 P2-2)", () => {
+  it("shows a failure from one surface on the other with the identical string", async () => {
+    seedDirty();
+    pushMock.mockRejectedValueOnce(new Error("La red falló."));
+    render(
+      <>
+        <SyncStatusChip />
+        <PhoneSyncRow testId="phone" />
+      </>,
+    );
+
+    // The chip fires; the phone row never ran a sync of its own.
+    fireEvent.click(
+      within(screen.getByTestId("sync-status-chip")).getByRole("button", {
+        name: /^sincronizar$/i,
+      }),
+    );
+
+    // One module error, two announcers — same string, never diverged.
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts).toHaveLength(2);
+    for (const alert of alerts) {
+      expect(alert).toHaveTextContent("La red falló.");
+    }
+    expect(
+      within(screen.getByTestId("phone")).getByRole("alert"),
+    ).toHaveTextContent("La red falló.");
+  });
+
+  it("clears the shared error on every surface once a retry succeeds", async () => {
+    const id = seedDirty();
+    pushMock.mockRejectedValueOnce(new Error("La red falló."));
+    pushMock.mockResolvedValue({
+      ok: true,
+      pushedIds: [id],
+      message: "Se sincronizó 1 registro con Supabase.",
+    });
+    render(
+      <>
+        <SyncStatusChip />
+        <PhoneSyncRow testId="phone" />
+      </>,
+    );
+
+    fireEvent.click(
+      within(screen.getByTestId("sync-status-chip")).getByRole("button", {
+        name: /^sincronizar$/i,
+      }),
+    );
+    expect(await screen.findAllByRole("alert")).toHaveLength(2);
+
+    // Either surface can retry: the phone row clears the chip's alert too.
+    fireEvent.click(
+      within(screen.getByTestId("phone")).getByRole("button", {
+        name: /reintentar/i,
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: /reintentar/i }),
+    ).not.toBeInTheDocument();
   });
 });

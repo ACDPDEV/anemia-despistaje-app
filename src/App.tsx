@@ -80,13 +80,17 @@ export default function App() {
   // Alt+S is scoped to the register tab and stands down while a padron
   // guard is armed (see isPadronGuardArmed above). Alt+G works from any tab
   // but stands down under the same guard, and only while sync is
-  // actionable: the chip and the phone-only Padrón row render their actions
-  // (tagged data-sync-action, one shared hook) only when online with
-  // pending work or a retryable error, and disable mid-flight — the
-  // :not([disabled]) query respects exactly that, so the shell never
-  // invents its own enabled logic. With both surfaces mounted the query
-  // takes the first in DOM order (the sidebar instance); both run the same
-  // guarded handler, so either target syncs.
+  // actionable: the chip and the phone-only rows (Registro/Padrón/Panel via
+  // the shared PhoneSyncRow seam) render their actions (tagged
+  // data-sync-action, one shared hook, one module-owned error) only when
+  // online with pending work or a retryable error, and disable mid-flight
+  // — the :not([disabled]) query respects exactly that, so the shell never
+  // invents its own enabled logic. Only one view mounts at a time (tab
+  // switch unmounts), so the DOM holds at most one phone action beside the
+  // sidebar chip; the query takes the first in DOM order (the sidebar
+  // instance when the Sheet is open, else the mounted view's phone row).
+  // Both run the same guarded handler and read the same module error, so
+  // either target syncs and every surface reports it.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!event.altKey || event.ctrlKey || event.metaKey) return;

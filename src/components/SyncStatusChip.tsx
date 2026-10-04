@@ -5,11 +5,14 @@ import { useOnline } from "../hooks/useOnline";
 import { createSupabaseSyncTable, filterUnchangedIds, pushDirty } from "../lib/sync";
 import { getSupabaseClient } from "../lib/supabase";
 import {
+  clearSyncError,
   formatLastSyncAgo,
   formatSyncPending,
   guardedPull,
   isSyncing,
   lastPullAt,
+  lastSyncError,
+  recordSyncError,
   runGuarded,
   subscribeSyncState,
   SYNC_BUSY_MESSAGE,
@@ -34,14 +37,17 @@ import { toSpanishErrorMessage } from "../lib/errorMessages";
 // phone-only Padrón row) and the text-button JSX in SyncActionButton, so
 // no surface duplicates sync behavior.
 // Shared sync state + sync handler for every sync surface: the footer
-// chip below (expanded + collapsed) and the phone-only Padrón row. One
-// hook so the surfaces can never disagree on pending text, enabled
-// grammar, or vocabulary. Every rendered action carries data-sync-action,
-// so the Alt+G shell query fires whichever instance it finds first: the
-// sidebar Sheet content unmounts when closed (phone row wins), and with
-// the Sheet open the sidebar instance comes first in DOM order while the
-// phone row hides behind sm:hidden — the query always lands on a working,
-// visible button running this same guarded handler.
+// chip below (expanded + collapsed) and the phone-only rows (Registro,
+// Padrón, Panel — PhoneSyncRow). One hook so the surfaces can never
+// disagree on pending text, enabled grammar, or vocabulary; the last error
+// lives in the syncGuard module (recordSyncError/clearSyncError) so a
+// failure on one surface appears on every other surface. Every rendered
+// action carries data-sync-action, so the Alt+G shell query fires
+// whichever instance it finds first: the sidebar Sheet content unmounts
+// when closed (the mounted view's phone row wins), and with the Sheet open
+// the sidebar instance comes first in DOM order while the phone row hides
+// behind sm:hidden — the query always lands on a working, visible button
+// running this same guarded handler.
 export type SyncAction = {
   online: boolean;
   pending: number;
@@ -79,16 +85,18 @@ export function useSyncAction(): SyncAction {
     const timer = window.setTimeout(() => setTick((t) => t + 1), delay);
     return () => window.clearTimeout(timer);
   }, [lastSyncAt, tick]);
-  // Last sync failure, kept visible until the next attempt starts.
-  const [error, setError] = useState<string | null>(null);
+  // Last sync failure: the module-owned lastSyncError, mirrored live so
+  // every surface announces the same string and clears together.
+  const [error, setError] = useState<string | null>(lastSyncError);
   const alive = useRef(true);
 
   useEffect(() => {
     alive.current = true;
-    const unsubscribe = subscribeSyncState(() => {
+    const unsubscribe = subscribeSyncState((state) => {
       if (alive.current) {
         setSyncing(isSyncing);
         setLastSyncAt(lastPullAt);
+        setError(state.lastSyncError);
       }
     });
     return () => {
@@ -107,12 +115,16 @@ export function useSyncAction(): SyncAction {
       : SYNC_STATUS_SAFE;
 
   function fail(message: string): void {
-    if (alive.current) setError(message);
+    // Module-owned: notifies, so the failing surface AND every other
+    // mounted surface show the identical string (no per-instance drift).
+    recordSyncError(message);
   }
 
   async function handleSync(): Promise<void> {
     if (!online || isSyncing) return;
-    if (alive.current) setError(null);
+    // A retry starts: clear the shared error first so every surface drops
+    // its alert line together (success clears it too, via the same path).
+    clearSyncError();
     const client = getSupabaseClient();
     const table = client ? createSupabaseSyncTable(client) : null;
     const snapshot = usePadronStore.getState().pacientes;
@@ -170,7 +182,7 @@ export function useSyncAction(): SyncAction {
       );
       if (!alive.current) return;
       if (!pull.ok) {
-        setError(pull.message);
+        recordSyncError(pull.message);
         return;
       }
       // Cooldown hits (ok, skipped) carry no fresh rows: nothing to apply.
@@ -204,7 +216,7 @@ export function useSyncAction(): SyncAction {
   return { online, pending, syncing, error, text, receipt, title, showAction, buttonLabel, handleSync };
 }
 
-// Shared sync button (expanded chip + phone Padrón row): same tag, same
+// Shared sync button (expanded chip + phone rows): same tag, same
 // shortcut, same disabled grammar. The collapsed chip keeps its own
 // icon-button JSX (different visual) but the same tag + hook handler.
 export function SyncActionButton({
@@ -230,6 +242,57 @@ export function SyncActionButton({
     >
       {label}
     </Button>
+  );
+}
+
+// Phone-only sync row shared by Registro, Padrón, and Panel: the sidebar
+// footer (with the sync chip) hides inside the hamburger Sheet on phones,
+// so each view renders sync on its first screen — compact status text plus
+// the shared sync action, quiet when clean + online like the chip.
+// sm:hidden keeps it off desktop (the footer chip owns that surface);
+// print:hidden keeps it off paper. Failure speaks through a compact
+// role="alert" line rendering the SAME module error string as the chip's
+// alert (one syncGuard source, one vocabulary — never a copied string),
+// styled identically (text-xs text-destructive). testId is view-scoped
+// (register/padron/dashboard-sync-phone) so pins stay per-view while the
+// structure stays identical. Only one view mounts at a time (tab switch
+// unmounts), so at most one phone action shares the DOM with the sidebar
+// chip — the Alt+G shell query always resolves first-in-DOM-order to a
+// working button running the same guarded handler.
+export function PhoneSyncRow({ testId }: { testId: string }) {
+  const sync = useSyncAction();
+  if (
+    sync.pending === 0 &&
+    sync.error === null &&
+    !sync.syncing &&
+    sync.online
+  ) {
+    return null;
+  }
+  return (
+    <div
+      data-testid={testId}
+      title={sync.title}
+      className="flex flex-col gap-1 sm:hidden print:hidden"
+    >
+      <div className="flex items-center gap-2">
+        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {sync.text}
+        </p>
+        {sync.showAction && (
+          <SyncActionButton
+            label={sync.buttonLabel}
+            syncing={sync.syncing}
+            onSync={sync.handleSync}
+          />
+        )}
+      </div>
+      {sync.error !== null && (
+        <p role="alert" className="text-xs text-destructive">
+          {sync.error}
+        </p>
+      )}
+    </div>
   );
 }
 

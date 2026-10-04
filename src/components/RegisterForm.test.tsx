@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "../stores/padronStore";
 import { useRegisterDraftStore } from "../stores/registerDraftStore";
+import { resetSyncGuardForTests } from "../lib/syncGuard";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
 import { RegisterForm } from "./RegisterForm";
 
@@ -9,6 +10,7 @@ beforeEach(() => {
   localStorage.clear();
   usePadronStore.getState().reset();
   useRegisterDraftStore.getState().clearDraft();
+  resetSyncGuardForTests();
 });
 
 function fillAndSubmit(nombre: string, edad: string, hb: string) {
@@ -253,6 +255,9 @@ describe("RegisterForm", () => {
     }
     expect(help).toHaveTextContent(/alt\+s/i);
     expect(help).toHaveTextContent(/alt\+g/i);
+    // Shared HelpSteps: the view-scoping line reads intentionally here
+    // too — this disclosure IS Registro's own ¿Cómo funciona?
+    expect(help).toHaveTextContent(/cada vista explica lo suyo/i);
     // Outside the Hb hint wiring: the disclosure is its own stop, not
     // field-hint noise on every Hb focus.
     const hb = screen.getByLabelText(/hemoglobina/i);
@@ -331,5 +336,74 @@ describe("RegisterForm draft persistence (P2-1)", () => {
     expect(screen.getByLabelText(/nombre/i)).toHaveValue("Ana Torres");
     expect(screen.getByLabelText(/edad/i)).toHaveValue("24");
     expect(screen.getByLabelText(/hemoglobina/i)).toHaveValue("12.0");
+  });
+});
+
+describe("RegisterForm phone sync row (run-24 P2-1)", () => {
+  function setOnline(value: boolean) {
+    Object.defineProperty(window.navigator, "onLine", {
+      value,
+      configurable: true,
+    });
+  }
+
+  function seedDirty() {
+    const { add } = usePadronStore.getState();
+    add({ nombre: "Ana Torres", edadMeses: 24, nivelHemoglobina: 12.0 });
+  }
+
+  it("renders the shared phone-only sync row with the pending vocabulary", () => {
+    setOnline(true);
+    seedDirty();
+    render(<RegisterForm />);
+    try {
+      const row = screen.getByTestId("register-sync-phone");
+      // Phone surface only (CSS contract, same pin grammar as Padrón):
+      // off desktop, off paper.
+      expect(row.className).toMatch(/sm:hidden/);
+      expect(row.className).toMatch(/print:hidden/);
+      // Same syncGuard strings as the chip, never a divergent phrasing.
+      expect(row).toHaveTextContent("1 por sincronizar");
+      const action = within(row).getByRole("button", {
+        name: /^sincronizar$/i,
+      });
+      expect(action).toHaveAttribute("data-sync-action", "true");
+      expect(action).toHaveAttribute("aria-keyshortcuts", "Alt+G");
+      expect(action.getAttribute("title")).toContain("Alt+G");
+    } finally {
+      setOnline(true);
+    }
+  });
+
+  it("stays quiet when clean and online: fresh app shows no row", () => {
+    setOnline(true);
+    // Fresh app: nothing registered, nothing pending, online.
+    render(<RegisterForm />);
+    expect(screen.queryByTestId("register-sync-phone")).not.toBeInTheDocument();
+  });
+
+  it("stays quiet when synced and online, like the Padrón row", () => {
+    setOnline(true);
+    seedDirty();
+    const ids = usePadronStore.getState().pacientes.map((p) => p.id);
+    usePadronStore.getState().markSynced(ids);
+    render(<RegisterForm />);
+    expect(screen.queryByTestId("register-sync-phone")).not.toBeInTheDocument();
+  });
+
+  it("names the offline state with no action, mirroring the chip", () => {
+    setOnline(false);
+    seedDirty();
+    render(<RegisterForm />);
+    try {
+      const row = screen.getByTestId("register-sync-phone");
+      expect(row).toHaveTextContent(/sin conexión/i);
+      expect(row).toHaveTextContent("1 por sincronizar");
+      expect(
+        within(row).queryByRole("button", { name: /sincronizar/i }),
+      ).not.toBeInTheDocument();
+    } finally {
+      setOnline(true);
+    }
   });
 });

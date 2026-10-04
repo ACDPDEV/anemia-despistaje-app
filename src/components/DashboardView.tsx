@@ -12,6 +12,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { cn } from "../lib/utils";
+import { PhoneSyncRow } from "./SyncStatusChip";
 import type { Diagnosis } from "../domain/anemia";
 import { HB_CUTOFF_LABEL } from "../domain/anemia";
 import { groupByAgeBand, type AgeBand } from "../lib/ageGroups";
@@ -177,6 +178,12 @@ export function DashboardView({
           </Button>
         </div>
       )}
+
+      {/* Phone-only sync row (shared PhoneSyncRow, identical structure on
+          Registro/Padrón/Panel): under the section header/status area so
+          the first screen stays sentence + hero + numbers. Quiet when clean
+          + online. */}
+      <PhoneSyncRow testId="dashboard-sync-phone" />
 
       {/* One hero unit (no eyebrow: craft-floor bans the kicker, so the
           triage sentence lives INSIDE this card as the number's body copy).
@@ -395,7 +402,7 @@ export function DashboardView({
           ¿Cómo funciona?
         </summary>
         <ol className="mt-1 list-decimal space-y-0.5 pl-4">
-          <li>La frase de triage resume quién necesita seguimiento.</li>
+          <li>La frase de triaje resume quién necesita seguimiento.</li>
           <li>Los colores de las barras muestran el peor diagnóstico observado en el rango de edad.</li>
           <li>Los detalles de hemoglobina y riesgo están colapsados por defecto.</li>
           <li>Los totales excluyen registros eliminados.</li>

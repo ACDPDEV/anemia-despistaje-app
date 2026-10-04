@@ -9,6 +9,8 @@ import { PadronView } from "./PadronView";
 beforeEach(() => {
   localStorage.clear();
   usePadronStore.getState().reset();
+  // Module-owned sync error: never leak an alert line across tests.
+  resetSyncGuardForTests();
 });
 
 function seedTwo() {
@@ -2214,12 +2216,14 @@ describe("PadronView phone sync affordance (run-22 P2-2)", () => {
       expect(shellTarget).not.toBeNull();
       expect(shellTarget).not.toBeDisabled();
       fireEvent.click(shellTarget!);
-      // The shared handler ran: the surface that fired surfaces the
-      // unconfigured cause. Error state is per-hook-instance, so only the
-      // clicked surface announces (exactly one alert, never a double).
-      expect(await screen.findByRole("alert")).toHaveTextContent(
-        /no está configurada/i,
-      );
+      // The shared handler ran: the module-owned error surfaces on BOTH
+      // mounted surfaces with the identical string (never a double with
+      // competing copy — one source, two announcers).
+      const alerts = await screen.findAllByRole("alert");
+      expect(alerts).toHaveLength(2);
+      for (const alert of alerts) {
+        expect(alert).toHaveTextContent(/no está configurada/i);
+      }
     } finally {
       setOnline(true);
     }

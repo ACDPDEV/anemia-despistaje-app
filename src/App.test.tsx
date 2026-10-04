@@ -3,6 +3,12 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { usePadronStore } from "./stores/padronStore";
 import { useRegisterDraftStore } from "./stores/registerDraftStore";
 import { resetSupabaseClientForTests } from "./lib/supabase";
+import { resetSyncGuardForTests } from "./lib/syncGuard";
+import { SyncStatusChip } from "./components/SyncStatusChip";
+import { RegisterForm } from "./components/RegisterForm";
+import { PadronView } from "./components/PadronView";
+import { DashboardView } from "./components/DashboardView";
+import { SidebarProvider } from "./components/ui/sidebar";
 import App from "./App";
 
 function setViewport(width: number, mobileMatch: boolean) {
@@ -54,6 +60,9 @@ beforeEach(() => {
   localStorage.clear();
   usePadronStore.getState().reset();
   useRegisterDraftStore.getState().clearDraft();
+  // The last sync error is module-owned: clear it so a failure in one
+  // test never leaks an alert line into the next.
+  resetSyncGuardForTests();
   setDesktopViewport();
 });
 
@@ -380,9 +389,13 @@ describe("App sidebar shell", () => {
 
     // Offline-first shell: no Supabase credentials here, so the sync path
     // runs and reports the unconfigured cause — proving Alt+G fired it.
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      /no está configurada/i,
-    );
+    // The error is module-owned: the sidebar chip AND the Registro phone
+    // row announce the identical string.
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts).toHaveLength(2);
+    for (const alert of alerts) {
+      expect(alert).toHaveTextContent(/no está configurada/i);
+    }
   });
 
   it("ignores Alt+G while any padron guard owns the keyboard", () => {
@@ -433,15 +446,26 @@ describe("App sidebar shell", () => {
     fireEvent.click(screen.getByRole("button", { name: /alternar barra lateral/i }));
     expect(screen.queryByTestId("sidebar-shortcuts")).not.toBeInTheDocument();
 
-    const action = screen.getByRole("button", { name: /^sincronizar$/i });
+    // Collapsed chip keeps its icon action beside the Registro phone
+    // row: two Sincronizar buttons, both Alt+G, both data-sync-action.
+    const actions = screen.getAllByRole("button", { name: /^sincronizar$/i });
+    expect(actions).toHaveLength(2);
+    const action = within(screen.getByTestId("sync-status-chip")).getByRole(
+      "button",
+      { name: /^sincronizar$/i },
+    );
     expect(action).toHaveAttribute("aria-keyshortcuts", "Alt+G");
     expect(action.getAttribute("title")).toContain("Alt+G");
 
     fireEvent.click(action);
     // Offline-first shell: no Supabase credentials here, so the sync path
     // runs and the failure surfaces the collapsed way — the composed title
-    // carries the cause and the action becomes a retry.
-    const retry = await screen.findByRole("button", { name: /reintentar/i });
+    // carries the cause and the actions become retries. Both mounted
+    // surfaces (collapsed chip + Registro phone row) share the module
+    // error, so both flip to Reintentar with the identical alert.
+    const retries = await screen.findAllByRole("button", { name: /reintentar/i });
+    expect(retries).toHaveLength(2);
+    const retry = retries[0];
     expect(retry).toHaveAttribute("aria-keyshortcuts", "Alt+G");
     expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
       "title",
@@ -485,10 +509,57 @@ describe("App sidebar shell", () => {
 
     // Offline-first shell: no Supabase credentials here, so the sync path
     // runs and reports the unconfigured cause — proving Alt+G fired it.
-    // Error state is per-hook-instance: only the fired surface (the
-    // sidebar chip, first in DOM order) announces.
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      /no está configurada/i,
+    // The error is module-owned: the sidebar chip (first in DOM order) and
+    // the Padrón phone row announce the identical string.
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts).toHaveLength(2);
+    for (const alert of alerts) {
+      expect(alert).toHaveTextContent(/no está configurada/i);
+    }
+  });
+
+  it("resolves Alt+G across every mounted sync surface (chip + all 3 phone rows)", async () => {
+    // Constructible permutation the tab switcher never shows: every view
+    // mounted at once beside the sidebar chip. One dirty row arms all
+    // four actions through the same hook + module error.
+    usePadronStore.getState().add({
+      nombre: "Ana Torres",
+      edadMeses: 24,
+      nivelHemoglobina: 12.0,
+    });
+    render(
+      <SidebarProvider>
+        <SyncStatusChip />
+        <RegisterForm />
+        <PadronView />
+        <DashboardView />
+      </SidebarProvider>,
     );
+    // All three phone rows render the identical structure beside the chip.
+    for (const testId of [
+      "register-sync-phone",
+      "padron-sync-phone",
+      "dashboard-sync-phone",
+    ]) {
+      expect(screen.getByTestId(testId)).toHaveTextContent("1 por sincronizar");
+    }
+    // Four enabled actions; the exact shell query resolves to exactly one
+    // working button (first in DOM order — the sidebar chip).
+    const actions = document.querySelectorAll(
+      'button[data-sync-action="true"]:not([disabled])',
+    );
+    expect(actions).toHaveLength(4);
+    const shellTarget = document.querySelector<HTMLButtonElement>(
+      'button[data-sync-action="true"]:not([disabled])',
+    );
+    expect(shellTarget).not.toBeNull();
+    expect(shellTarget).not.toBeDisabled();
+    fireEvent.click(shellTarget!);
+    // One module error, four announcers — identical string everywhere.
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts).toHaveLength(4);
+    for (const alert of alerts) {
+      expect(alert).toHaveTextContent(/no está configurada/i);
+    }
   });
 });
