@@ -180,6 +180,12 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
 
   function openReset() {
     setShowReset(true);
+    // Shared-device hygiene (same contract as switchMode): the password
+    // never survives the recovery detour, the email does (it is the
+    // recovery target). Also drop the visibility toggle so a revealed
+    // password never greets the next user on return.
+    setPassword("");
+    setShowPassword(false);
     setEmailError(null);
     setFormError(null);
   }
@@ -187,6 +193,10 @@ export function LoginView({ onSignedIn }: { onSignedIn?: () => void }) {
   function closeReset() {
     setShowReset(false);
     setResetSent(false);
+    // Return path clears too: a password typed before the detour must not
+    // linger one screen longer if the user abandons recovery.
+    setPassword("");
+    setShowPassword(false);
     setEmailError(null);
     setFormError(null);
   }

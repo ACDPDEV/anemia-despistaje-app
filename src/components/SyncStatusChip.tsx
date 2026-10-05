@@ -83,8 +83,12 @@ export function useSyncAction(): SyncAction {
   // window never blurs.
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const elapsedMs =
-      lastSyncAt === null ? Number.POSITIVE_INFINITY : Date.now() - lastSyncAt;
+    // Never-synced receipt is static ("Aún sin sincronizar" never ages
+    // without a sync event), so no timer: the tick exists to age a real
+    // receipt, and with no receipt there is nothing to age. A later sync
+    // flips lastSyncAt non-null and the cadence below starts then.
+    if (lastSyncAt === null) return;
+    const elapsedMs = Date.now() - lastSyncAt;
     const delay = elapsedMs < 60_000 ? 5000 : 30000;
     const timer = window.setTimeout(() => setTick((t) => t + 1), delay);
     return () => window.clearTimeout(timer);

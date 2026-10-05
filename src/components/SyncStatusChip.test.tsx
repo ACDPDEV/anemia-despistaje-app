@@ -477,6 +477,31 @@ describe("SyncStatusChip", () => {
     );
   });
 
+  it("schedules no re-render timer while never-synced (run-6 minor)", () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(<SyncStatusChip />);
+      expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+        "Aún sin sincronizar",
+      );
+      // The static string never ages without a sync event: no interval
+      // armed, so advancing a full minute schedules nothing and renders
+      // nothing new.
+      expect(vi.getTimerCount()).toBe(0);
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
+        "Aún sin sincronizar",
+      );
+      expect(vi.getTimerCount()).toBe(0);
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("surfaces the last-sync timestamp live after a sync completes", async () => {
     const id = seedDirty();
     pushMock.mockResolvedValue({

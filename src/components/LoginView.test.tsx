@@ -703,6 +703,107 @@ describe("LoginView repeat failures re-announce (harden P2)", () => {
   });
 });
 
+describe("LoginView recovery-detour hygiene (run-6 minor)", () => {
+  it("clears the password but keeps the email when opening recovery", () => {
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿olvidaste tu contraseña\?/i }),
+    );
+
+    // Recovery view reuses the email as its target; the password field is gone.
+    expect(screen.getByLabelText(/correo/i)).toHaveValue("a@b.c");
+    expect(
+      screen.queryByLabelText(/contraseña/i, { selector: "input" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("returns from recovery with the password cleared and the email preserved", () => {
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿olvidaste tu contraseña\?/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /volver a iniciar sesión/i }),
+    );
+
+    expect(screen.getByLabelText(/correo/i)).toHaveValue("a@b.c");
+    expect(
+      screen.getByLabelText(/contraseña/i, { selector: "input" }),
+    ).toHaveValue("");
+  });
+
+  it("returns from the reset confirmation with the password cleared and the email preserved", async () => {
+    vi.spyOn(auth, "requestPasswordReset").mockResolvedValue(undefined);
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/correo/i), {
+      target: { value: "a@b.c" },
+    });
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿olvidaste tu contraseña\?/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /enviar enlace de recuperación/i }),
+    );
+    await screen.findByRole("status");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /volver a iniciar sesión/i }),
+    );
+
+    expect(screen.getByLabelText(/correo/i)).toHaveValue("a@b.c");
+    expect(
+      screen.getByLabelText(/contraseña/i, { selector: "input" }),
+    ).toHaveValue("");
+  });
+
+  it("resets the show/hide toggle on the recovery detour", () => {
+    render(<LoginView />);
+
+    fireEvent.change(screen.getByLabelText(/contraseña/i, { selector: "input" }), {
+      target: { value: "secreta" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /mostrar contraseña/i }),
+    );
+    expect(
+      screen.getByRole("button", { name: /ocultar contraseña/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /¿olvidaste tu contraseña\?/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /volver a iniciar sesión/i }),
+    );
+
+    // Toggle back to its default (hidden): a revealed password never
+    // greets the next user on return.
+    expect(
+      screen.getByRole("button", { name: /mostrar contraseña/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/contraseña/i, { selector: "input" }),
+    ).toHaveAttribute("type", "password");
+  });
+});
 describe("LoginView mode-switch hygiene (run-31 minor)", () => {
   it("clears the password but keeps the email when switching modes", () => {
     render(<LoginView />);
