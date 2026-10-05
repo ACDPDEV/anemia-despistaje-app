@@ -192,17 +192,18 @@ describe("SyncStatusChip", () => {
     );
   });
 
-  it("mirrors the full status text in the title for the collapsed sidebar", () => {
+  it("leaves the expanded chip without a title tooltip (body already shows both lines)", () => {
     const { rerender } = render(<SyncStatusChip />);
-    expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
+    // Expanded status + receipt render verbatim in the body, so a title
+    // would repeat them word for word. Collapsed keeps its title (pinned
+    // above and below) where the text is clipped.
+    expect(screen.getByTestId("sync-status-chip")).not.toHaveAttribute(
       "title",
-      "A salvo en este equipo · Aún sin sincronizar",
     );
     seedDirty();
     rerender(<SyncStatusChip />);
-    expect(screen.getByTestId("sync-status-chip")).toHaveAttribute(
+    expect(screen.getByTestId("sync-status-chip")).not.toHaveAttribute(
       "title",
-      "1 por sincronizar · Aún sin sincronizar",
     );
   });
 
@@ -490,9 +491,9 @@ describe("SyncStatusChip", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^sincronizar$/i }));
 
-    await screen.findByText(/última sincronización hace \d+s/i);
+    await screen.findByText(/última sincronización ahora mismo/i);
     expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
-      /última sincronización hace \d+s/i,
+      /última sincronización ahora mismo/i,
     );
   });
 
@@ -510,7 +511,7 @@ describe("SyncStatusChip", () => {
       guard.recordPull(Date.now());
       const { unmount } = render(<SyncStatusChip />);
       expect(screen.getByTestId("sync-receipt")).toHaveTextContent(
-        /última sincronización hace 0s/i,
+        /última sincronización ahora mismo/i,
       );
       // A 5s tick moves the seconds count while the sync is still fresh.
       act(() => {

@@ -69,12 +69,12 @@ export function HelpSteps() {
       <ol className="mt-1 list-decimal space-y-0.5 pl-4">
         <li>Registra al paciente en la pestaña Registro.</li>
         <li>Revisa el aviso de posible duplicado.</li>
-        <li>Sincroniza con Alt+G cuando tengas conexión.</li>
+        <li>Sincroniza (botón Sincronizar o Alt+G) cuando tengas conexión.</li>
         <li>Imprime o exporta desde el Padrón.</li>
       </ol>
       <p className="mt-1">
         Atajos: Alt+1/2/3 cambian de pestaña, Alt+S registra, Alt+G
-        sincroniza.
+        sincroniza (en teléfono, botón Sincronizar).
       </p>
     </>
   );
@@ -170,7 +170,7 @@ export function AppSidebar({ active, onNavigate }: AppSidebarProps) {
       <SidebarFooter>
         {!collapsed && (
           <p data-testid="sidebar-shortcuts" className="px-2 text-[11px] text-muted-foreground">
-            Atajos: Alt+1 Registro · Alt+2 Padrón · Alt+3 Panel · Alt+G Sincronizar
+            Atajos: Alt+1 Registro · Alt+2 Padrón · Alt+3 Panel · Alt+G Sincronizar (en teléfono, botón Sincronizar)
           </p>
         )}
         <SyncStatusChip collapsed={collapsed} />

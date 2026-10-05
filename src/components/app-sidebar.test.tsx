@@ -133,6 +133,10 @@ describe("AppSidebar footer controls", () => {
     }
     expect(help).toHaveTextContent(/alt\+s/i);
     expect(help).toHaveTextContent(/alt\+g/i);
+    // run-5 P2 (clarify): step 3 names the tap path, not just the keys —
+    // field phones have no Alt key.
+    expect(help).toHaveTextContent(/botón sincronizar/i);
+    expect(help).toHaveTextContent(/en teléfono/i);
     // run-28 P2-2 (distill): the meta scoping line is gone — the three
     // differentiated stems (Registro/Padrón/Panel) plus this global stem
     // already communicate the scope. The shortcuts line stays.
@@ -148,6 +152,10 @@ describe("AppSidebar footer controls", () => {
     );
     expect(screen.getByTestId("sidebar-shortcuts")).toHaveTextContent(
       /alt\+g sincronizar/i,
+    );
+    // run-5 P2 (clarify): the shortcuts line names the phone tap path too.
+    expect(screen.getByTestId("sidebar-shortcuts")).toHaveTextContent(
+      /en teléfono, botón sincronizar/i,
     );
   });
 });
@@ -185,6 +193,9 @@ describe("AppSidebar collapsed footer", () => {
       expect(popover).toHaveTextContent(step);
     }
     expect(popover).toHaveTextContent(/alt\+g/i);
+    // run-5 P2 (clarify): the popover shares HelpSteps verbatim, tap path
+    // included.
+    expect(popover).toHaveTextContent(/botón sincronizar/i);
     // The heading owns the popover name (run-26 P3-1): labelledby, not a
     // detached aria-label copy.
     expect(popover).toHaveAttribute(

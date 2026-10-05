@@ -472,8 +472,12 @@ export function SyncStatusChip({ collapsed = false }: { collapsed?: boolean }) {
     );
   }
 
+  // Expanded form carries NO title tooltip: the status and receipt lines
+  // are already visible verbatim in the body, so a title would repeat
+  // them word for word. Collapsed and phone rows keep theirs — their text
+  // is clipped there.
   return (
-    <div data-testid="sync-status-chip" title={title} className="flex flex-col gap-1 px-2">
+    <div data-testid="sync-status-chip" className="flex flex-col gap-1 px-2">
       <div className="flex items-center gap-2">
         <p
           role="status"

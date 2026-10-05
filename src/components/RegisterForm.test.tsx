@@ -409,6 +409,9 @@ describe("RegisterForm", () => {
     }
     expect(help).toHaveTextContent(/alt\+s/i);
     expect(help).toHaveTextContent(/alt\+g/i);
+    // run-5 P2 (clarify): shared HelpSteps names the tap path, not just
+    // the keys — field phones have no Alt key.
+    expect(help).toHaveTextContent(/botón sincronizar/i);
     // The triage cue: summary line (always visible, run-28 P2-1) plus the
     // full sentence verbatim in the body.
     expect(help).toHaveTextContent(/moderada o severa → seguimiento en el panel/i);

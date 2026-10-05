@@ -399,6 +399,10 @@ describe("App sidebar shell", () => {
     expect(screen.getByTestId("sidebar-shortcuts")).toHaveTextContent(
       /alt\+g sincronizar/i,
     );
+    // run-5 P2 (clarify): the shortcuts line names the phone tap path too.
+    expect(screen.getByTestId("sidebar-shortcuts")).toHaveTextContent(
+      /en teléfono, botón sincronizar/i,
+    );
   });
 
   it("fires the sync with Alt+G when pending work exists", async () => {
@@ -510,6 +514,8 @@ describe("App sidebar shell", () => {
       expect(popover).toHaveTextContent(step);
     }
     expect(popover).toHaveTextContent(/alt\+g/i);
+    // run-5 P2 (clarify): the shared steps name the tap path for phones.
+    expect(popover).toHaveTextContent(/botón sincronizar/i);
   });
 
   it("fires a sync with Alt+G from the Padrón tab (phone row mounted)", async () => {

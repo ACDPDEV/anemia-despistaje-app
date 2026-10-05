@@ -87,7 +87,7 @@ describe("pull cooldown", () => {
   });
 
   it("escalates the receipt honestly across seconds, minutes, and hours", () => {
-    expect(formatLastSyncAgo(0)).toBe("Última sincronización hace 0s");
+    expect(formatLastSyncAgo(5)).toBe("Última sincronización hace 5s");
     expect(formatLastSyncAgo(59)).toBe("Última sincronización hace 59s");
     expect(formatLastSyncAgo(60)).toBe("Última sincronización hace 1 min");
     expect(formatLastSyncAgo(3599)).toBe("Última sincronización hace 59 min");
@@ -96,9 +96,16 @@ describe("pull cooldown", () => {
   });
 
   it("clamps negatives and floors fractions without invented precision", () => {
-    expect(formatLastSyncAgo(-5)).toBe("Última sincronización hace 0s");
+    expect(formatLastSyncAgo(-5)).toBe("Última sincronización ahora mismo");
     expect(formatLastSyncAgo(7.9)).toBe("Última sincronización hace 7s");
     expect(formatLastSyncAgo(119.9)).toBe("Última sincronización hace 1 min");
+  });
+
+  it("reads ahora mismo in the first seconds instead of hace 0s (t=0 edge)", () => {
+    expect(formatLastSyncAgo(0)).toBe("Última sincronización ahora mismo");
+    expect(formatLastSyncAgo(4)).toBe("Última sincronización ahora mismo");
+    expect(formatLastSyncAgo(4.9)).toBe("Última sincronización ahora mismo");
+    expect(formatLastSyncAgo(5)).toBe("Última sincronización hace 5s");
   });
 
   it("skips fetchAll within the window and runs after it", async () => {

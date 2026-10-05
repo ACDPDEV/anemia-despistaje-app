@@ -27,6 +27,10 @@ export const PULL_COOLDOWN_MESSAGE =
 export const SYNC_BUSY_MESSAGE = "Sincronizando… Espera a que termine la sincronización en curso.";
 // Prefix for the "last sync Xs ago" label; use formatLastSyncAgo for the full text.
 export const LAST_SYNC_PREFIX = "Última sincronización hace";
+// Label for a sync that just landed: sub-5s elapsed reads as "now"
+// instead of the literal "hace 0s", which confuses literal readers at
+// the peak-trust moment right after a sync.
+export const LAST_SYNC_NOW = "Última sincronización ahora mismo";
 
 // One sync vocabulary: every surface (status chip, print header, offline
 // line) names the same two states with the same strings, verbatim. English
@@ -57,13 +61,15 @@ export function formatSyncOffline(count: number): string {
     : SYNC_STATUS_OFFLINE;
 }
 
-// Full "Última sincronización hace …" label for a given elapsed second
-// count. Escalates honestly with floored units and no invented precision:
-// under a minute shows seconds, under an hour shows whole minutes, beyond
-// that whole hours (field sessions run long; a seconds count past 59 lies
-// about freshness the chip cannot afford to re-render every second for).
+// Full "Última sincronización …" label for a given elapsed second count.
+// Escalates honestly with floored units and no invented precision: the
+// first seconds read "ahora mismo", under a minute shows whole seconds,
+// under an hour shows whole minutes, beyond that whole hours (field
+// sessions run long; a seconds count past 59 lies about freshness the
+// chip cannot afford to re-render every second for).
 export function formatLastSyncAgo(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
+  if (total < 5) return LAST_SYNC_NOW;
   if (total < 60) return `${LAST_SYNC_PREFIX} ${total}s`;
   const minutes = Math.floor(total / 60);
   if (minutes < 60) return `${LAST_SYNC_PREFIX} ${minutes} min`;

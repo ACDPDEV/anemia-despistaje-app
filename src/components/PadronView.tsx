@@ -110,7 +110,7 @@ function PadronHelpDetails() {
       <ol className="mt-1 list-decimal space-y-0.5 pl-4">
         <li>Selecciona en la vista: las acciones solo alcanzan lo visible.</li>
         <li>Eliminar pide confirmación y Deshacer recupera lo borrado.</li>
-        <li>Sincroniza con Alt+G cuando tengas conexión.</li>
+        <li>Sincroniza (botón Sincronizar o Alt+G) cuando tengas conexión.</li>
         <li>Exporta o imprime desde los botones de arriba.</li>
       </ol>
     </details>
